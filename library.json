@@ -1,6 +1,17 @@
 {
-  "name": "display_core",
+  "name": "dcr_display",
   "version": "0.1.0",
+  "description": "Display, menu, and screen-management library for ESP32 with TFT_eSPI",
+  "keywords": ["display", "tft", "menu", "esp32", "tft_espi"],
+  "license": "GPL-3.0-or-later",
+  "frameworks": ["arduino"],
+  "platforms": ["espressif32"],
+  "dependencies": [
+    {
+      "name": "bodmer/TFT_eSPI",
+      "version": "^2.5.0"
+    }
+  ],
   "build": {
     "includeDir": "src",
     "srcDir": "src"
