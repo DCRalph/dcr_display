@@ -10,6 +10,14 @@
     {
       "name": "bodmer/TFT_eSPI",
       "version": "^2.5.0"
+    },
+    {
+      "name": "adafruit/Adafruit ILI9341",
+      "version": "^1.6.1"
+    },
+    {
+      "name": "adafruit/Adafruit GFX Library",
+      "version": "^1.11.9"
     }
   ],
   "build": {
