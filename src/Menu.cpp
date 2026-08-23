@@ -10,6 +10,30 @@ namespace MenuStyle
     Metrics gMetrics{};
   }
 
+  Metrics Metrics::forPanel(uint16_t width, uint16_t height, uint8_t colorDepth) noexcept
+  {
+    Metrics m;
+    m.fallbackDisplayHeight = height == 0 ? 240 : height;
+
+    if (height <= 80)
+    {
+      // Rows sized to the u8g2 fonts a mono driver maps the roles onto.
+      m.contentTopY = 12;
+      m.small = {TextRole::Small, 8, 2};
+      m.medium = {TextRole::Body, 12, 3};
+      m.large = {TextRole::Title, 18, 4};
+    }
+    else if (height <= 160)
+    {
+      m.contentTopY = 16;
+      m.small = {TextRole::Small, 10, 2};
+      m.medium = {TextRole::Body, 16, 3};
+      m.large = {TextRole::Title, 22, 4};
+    }
+
+    return m;
+  }
+
   void setMetrics(const Metrics &m) noexcept
   {
     gMetrics = m;

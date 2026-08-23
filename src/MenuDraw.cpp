@@ -23,7 +23,7 @@ void MenuItem::draw(uint8_t _x, uint8_t _y, bool _active)
   MenuSize size = parent ? parent->getMenuSize() : MenuSize::Large;
   MenuStyle::DrawStyle style = MenuStyle::drawStyle(size);
 
-  display.setTextSize(style.textSize);
+  display.setTextRole(style.role);
   display.setTextDatum(TL_DATUM);
 
   if (_active)
@@ -46,7 +46,7 @@ void MenuItemToggle::draw(uint8_t _x, uint8_t _y, bool _active)
   MenuSize size = parent ? parent->getMenuSize() : MenuSize::Large;
   MenuStyle::DrawStyle style = MenuStyle::drawStyle(size);
 
-  display.setTextSize(style.textSize);
+  display.setTextRole(style.role);
   display.setTextDatum(TL_DATUM);
 
   if (_active)
@@ -73,7 +73,7 @@ void MenuItemString::draw(uint8_t _x, uint8_t _y, bool _active)
   MenuSize size = parent ? parent->getMenuSize() : MenuSize::Large;
   MenuStyle::DrawStyle style = MenuStyle::drawStyle(size);
 
-  display.setTextSize(style.textSize);
+  display.setTextRole(style.role);
   display.setTextDatum(TL_DATUM);
 
   if (_active)
@@ -104,7 +104,7 @@ void MenuItemNumber<T>::draw(uint8_t _x, uint8_t _y, bool _active)
     selected = false;
   }
 
-  display.setTextSize(style.textSize);
+  display.setTextRole(style.role);
   display.setTextDatum(TL_DATUM);
 
   String valueStr = String(*value);
@@ -139,7 +139,7 @@ void MenuItemSelect::draw(uint8_t _x, uint8_t _y, bool _active)
   String dispText = getName();
   String optionText = getSelectedOption();
 
-  display.setTextSize(style.textSize);
+  display.setTextRole(style.role);
   display.setTextDatum(TL_DATUM);
 
   if (_active && selected)

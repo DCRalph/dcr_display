@@ -1,5 +1,6 @@
 // Display facade implementation.
 #include "Display.h"
+#include "Menu.h"
 #include "ScreenManager.h"
 
 Display::Display() : config(), screenManager(nullptr), showMenuBar(true), topBarRenderer(nullptr) {}
@@ -8,6 +9,10 @@ void Display::begin(const DisplayConfig &config, ScreenManager *screenManager)
 {
   this->config = config;
   this->screenManager = screenManager;
+
+  // Seed chrome and menu geometry from the panel. Callers override afterwards.
+  this->displayProfile = DisplayProfile::forPanel(config.width, config.height, config.colorDepth);
+  MenuStyle::setMetrics(MenuStyle::Metrics::forPanel(config.width, config.height, config.colorDepth));
 
   if (this->config.ops.init)
     this->config.ops.init(this->config.context, this->config);
@@ -70,6 +75,14 @@ void Display::setTextSize(uint8_t size)
 {
   if (config.ops.setTextSize)
     config.ops.setTextSize(config.context, size);
+}
+
+void Display::setTextRole(TextRole role)
+{
+  if (config.ops.setTextRole)
+    config.ops.setTextRole(config.context, role);
+  else
+    setTextSize(defaultTextScaleFor(role));
 }
 
 void Display::setTextDatum(uint8_t datum)
@@ -158,6 +171,17 @@ uint16_t Display::color565(uint8_t r, uint8_t g, uint8_t b)
 void Display::wrapTextInBounds(String text, int x, int y, int width, int height, int textSize, int gap, uint16_t color, int textAlignment)
 {
   setTextSize(textSize);
+  wrapTextInBoundsCurrentFont(text, x, y, width, height, gap, color, textAlignment);
+}
+
+void Display::wrapTextInBounds(String text, int x, int y, int width, int height, TextRole role, int gap, uint16_t color, int textAlignment)
+{
+  setTextRole(role);
+  wrapTextInBoundsCurrentFont(text, x, y, width, height, gap, color, textAlignment);
+}
+
+void Display::wrapTextInBoundsCurrentFont(String text, int x, int y, int width, int height, int gap, uint16_t color, int textAlignment)
+{
   setTextColor(color);
   setTextDatum(textAlignment);
 
@@ -215,6 +239,16 @@ void Display::setTopBarRenderer(TopBarRenderer renderer)
   topBarRenderer = renderer;
 }
 
+const DisplayProfile &Display::profile() const
+{
+  return displayProfile;
+}
+
+void Display::setProfile(const DisplayProfile &profile)
+{
+  displayProfile = profile;
+}
+
 void Display::drawTopBar()
 {
   if (!screenManager || !screenManager->getCurrentScreen())
@@ -226,18 +260,36 @@ void Display::drawTopBar()
     return;
   }
 
-  fillRect(0, 0, width(), 20, screenManager->getScreenTopBarColor());
+  const DisplayProfile &p = displayProfile;
+  const int16_t barHeight = static_cast<int16_t>(p.topBarHeight);
 
-  setTextSize(2);
-  setTextColor(screenManager->getScreenTopBarTextColor());
+  uint16_t textColor = screenManager->getScreenTopBarTextColor();
+
+  if (p.topBarFilled)
+  {
+    fillRect(0, 0, width(), barHeight, screenManager->getScreenTopBarColor());
+  }
+  else
+  {
+    // No fill, so the bar text has to read against the screen background.
+    textColor = TFT_WHITE;
+    if (p.topBarUnderline)
+      drawLine(0, barHeight - 1, width(), barHeight - 1, TFT_WHITE);
+  }
+
+  setTextRole(p.topBarTextRole);
+  setTextColor(textColor);
+
+  const int16_t midY = barHeight / 2;
+
   setTextDatum(ML_DATUM);
+  drawString(String(screenManager->getCurrentScreen()->name), p.topBarPaddingX, midY);
 
-  drawString(String(screenManager->getCurrentScreen()->name), 10, 10);
   char buf[20];
-  sprintf(buf, "%i%%", getBatteryPercentage());
+  snprintf(buf, sizeof(buf), "%i%%", getBatteryPercentage());
 
   setTextDatum(MR_DATUM);
-  drawString(buf, width() - 10, 10);
+  drawString(buf, width() - p.topBarPaddingX, midY);
 }
 
 void Display::render(ScreenManager &manager)

@@ -18,7 +18,8 @@ class AutoClosePopup : public Popup
 private:
   unsigned long startTime;
   unsigned long duration;
-  int progressBarWidth = 0;
+  /** Remaining time as 0-100; converted to pixels at draw time. */
+  uint8_t progressPercent = 100;
 
 public:
   AutoClosePopup(String _title, String _message, unsigned long _duration);

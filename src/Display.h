@@ -3,6 +3,8 @@
 
 #include <Arduino.h>
 
+#include "DisplayProfile.h"
+
 // Display default colors/datum (match TFT_eSPI when used with TFT driver)
 #ifndef TFT_BLACK
 #define TFT_BLACK 0x0000
@@ -47,6 +49,7 @@ using DisplayInitFn = void (*)(void *context, const DisplayConfig &config);
 using DisplayClearFn = void (*)(void *context, uint16_t color);
 using DisplayPushFn = void (*)(void *context);
 using DisplaySetTextSizeFn = void (*)(void *context, uint8_t size);
+using DisplaySetTextRoleFn = void (*)(void *context, TextRole role);
 using DisplaySetTextDatumFn = void (*)(void *context, uint8_t datum);
 using DisplaySetTextColorFn = void (*)(void *context, uint16_t color);
 using DisplaySetTextColorBgFn = void (*)(void *context, uint16_t fg, uint16_t bg);
@@ -69,6 +72,8 @@ struct DisplayDriverOps
   DisplayPushFn push = nullptr;
 
   DisplaySetTextSizeFn setTextSize = nullptr;
+  /** Optional. When null, `Display::setTextRole` falls back to `setTextSize`. */
+  DisplaySetTextRoleFn setTextRole = nullptr;
   DisplaySetTextDatumFn setTextDatum = nullptr;
   DisplaySetTextColorFn setTextColor = nullptr;
   DisplaySetTextColorBgFn setTextColorBg = nullptr;
@@ -115,6 +120,11 @@ public:
   void push();
 
   void setTextSize(uint8_t size);
+  /**
+   * Select text by role rather than raw size. Prefer this everywhere: a driver
+   * with discrete fonts (U8g2) cannot honour an arbitrary integer scale.
+   */
+  void setTextRole(TextRole role);
   void setTextDatum(uint8_t datum);
   void setTextColor(uint16_t color);
   void setTextColor(uint16_t fg, uint16_t bg);
@@ -133,6 +143,7 @@ public:
   uint16_t color565(uint8_t r, uint8_t g, uint8_t b);
 
   void wrapTextInBounds(String text, int x, int y, int width, int height, int textSize, int gap, uint16_t color, int textAlignment = TC_DATUM);
+  void wrapTextInBounds(String text, int x, int y, int width, int height, TextRole role, int gap, uint16_t color, int textAlignment = TC_DATUM);
 
   void noTopBar();
   void drawTopBar();
@@ -144,14 +155,25 @@ public:
    */
   void setTopBarRenderer(TopBarRenderer renderer);
 
+  /**
+   * Chrome geometry. `begin` seeds this from `DisplayProfile::forPanel`, so
+   * override after calling it.
+   */
+  const DisplayProfile &profile() const;
+  void setProfile(const DisplayProfile &profile);
+
   void render();
   void render(ScreenManager &manager);
 
 private:
+  /** Shared body of both `wrapTextInBounds` overloads; font already selected. */
+  void wrapTextInBoundsCurrentFont(String text, int x, int y, int width, int height, int gap, uint16_t color, int textAlignment);
+
   DisplayConfig config;
   ScreenManager *screenManager;
   bool showMenuBar;
   TopBarRenderer topBarRenderer;
+  DisplayProfile displayProfile;
 };
 
 extern Display display;

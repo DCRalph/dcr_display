@@ -33,16 +33,16 @@ namespace MenuStyle
 {
   struct DrawStyle
   {
-    uint8_t textSize;
+    TextRole role;
     int lineHeight;
     uint8_t radius;
   };
 
   /**
    * Row geometry for the three density presets, plus the Y coordinate the first
-   * row starts at. Defaults suit a ~240px-tall colour TFT; call `setMetrics` at
-   * boot (before the first `Menu::draw`) to retune for a different panel, e.g. a
-   * 128x64 mono OLED.
+   * row starts at. Defaults suit a ~240px-tall colour TFT. `Display::begin`
+   * installs `forPanel` results automatically; call `setMetrics` afterwards to
+   * override.
    */
   struct Metrics
   {
@@ -55,9 +55,15 @@ namespace MenuStyle
      */
     uint16_t fallbackDisplayHeight = 240;
 
-    DrawStyle small = {1, 12, 2};
-    DrawStyle medium = {2, 20, 3};
-    DrawStyle large = {3, 28, 4};
+    DrawStyle small = {TextRole::Small, 12, 2};
+    DrawStyle medium = {TextRole::Body, 20, 3};
+    DrawStyle large = {TextRole::Title, 28, 4};
+
+    /**
+     * Row geometry for a panel of this size, matched to the bands in
+     * `DisplayProfile::forPanel`. `Display::begin` applies this automatically.
+     */
+    static Metrics forPanel(uint16_t width, uint16_t height, uint8_t colorDepth) noexcept;
   };
 
   /** Replace the active geometry. Menus re-page on their next `draw()`. */
