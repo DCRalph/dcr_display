@@ -1,6 +1,10 @@
 // TFT_eSPI sprite-backed driver implementation.
 #include "TFTDisplayDriver.h"
 
+// Compiled only when the backing panel library is present, so projects that use a
+// different driver (e.g. U8g2) need not depend on TFT_eSPI.
+#if __has_include(<TFT_eSPI.h>)
+
 namespace
 {
   static TFTDisplayDriverContext *ctx(void *context)
@@ -138,3 +142,5 @@ DisplayConfig TFTDisplayDriver::makeConfig(TFTDisplayDriverContext *context, uin
   config.ops = makeOps();
   return config;
 }
+
+#endif // __has_include(<TFT_eSPI.h>)

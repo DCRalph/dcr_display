@@ -13,6 +13,10 @@
 //     (e.g. XPT2046) share it.
 #pragma once
 
+// Compiled only when the backing panel library is present, so projects that use a
+// different driver (e.g. U8g2) need not depend on Adafruit_ILI9341.
+#if __has_include(<Adafruit_ILI9341.h>)
+
 #include <SPI.h>
 #include <Adafruit_ILI9341.h>
 
@@ -48,3 +52,5 @@ namespace ILI9341DisplayDriver
   // The driver-owned SPI bus, so a touch controller can share the same wiring.
   SPIClass &spi(ILI9341DisplayDriverContext *context);
 }
+
+#endif // __has_include(<Adafruit_ILI9341.h>)

@@ -2,7 +2,7 @@
 #include "Display.h"
 #include "ScreenManager.h"
 
-Display::Display() : config(), screenManager(nullptr), showMenuBar(true) {}
+Display::Display() : config(), screenManager(nullptr), showMenuBar(true), topBarRenderer(nullptr) {}
 
 void Display::begin(const DisplayConfig &config, ScreenManager *screenManager)
 {
@@ -210,10 +210,21 @@ void Display::noTopBar(void)
   showMenuBar = false;
 }
 
+void Display::setTopBarRenderer(TopBarRenderer renderer)
+{
+  topBarRenderer = renderer;
+}
+
 void Display::drawTopBar()
 {
   if (!screenManager || !screenManager->getCurrentScreen())
     return;
+
+  if (topBarRenderer)
+  {
+    topBarRenderer(*this, screenManager->getCurrentScreen());
+    return;
+  }
 
   fillRect(0, 0, width(), 20, screenManager->getScreenTopBarColor());
 

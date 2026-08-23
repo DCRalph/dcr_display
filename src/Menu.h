@@ -31,29 +31,6 @@ enum class MenuSize
 
 namespace MenuStyle
 {
-  /** First Y coordinate used for menu rows (below top bar); must match `Menu::draw`. */
-  constexpr uint16_t kContentTopY = 22;
-
-  /**
-   * When `display.height()` is not yet known (e.g. static init before `Display::begin`),
-   * assume this height so paging is non-degenerate until the first `draw()` sync.
-   */
-  constexpr uint16_t kFallbackDisplayHeight = 240;
-
-  constexpr int lineHeight(MenuSize size) noexcept
-  {
-    switch (size)
-    {
-    case MenuSize::Small:
-      return 12;
-    case MenuSize::Medium:
-      return 20;
-    case MenuSize::Large:
-    default:
-      return 28;
-    }
-  }
-
   struct DrawStyle
   {
     uint8_t textSize;
@@ -61,37 +38,41 @@ namespace MenuStyle
     uint8_t radius;
   };
 
-  constexpr DrawStyle drawStyle(MenuSize size) noexcept
+  /**
+   * Row geometry for the three density presets, plus the Y coordinate the first
+   * row starts at. Defaults suit a ~240px-tall colour TFT; call `setMetrics` at
+   * boot (before the first `Menu::draw`) to retune for a different panel, e.g. a
+   * 128x64 mono OLED.
+   */
+  struct Metrics
   {
-    const int lh = lineHeight(size);
-    switch (size)
-    {
-    case MenuSize::Small:
-      return {1, lh, 2};
-    case MenuSize::Medium:
-      return {2, lh, 3};
-    case MenuSize::Large:
-    default:
-      return {3, lh, 4};
-    }
-  }
+    /** First Y coordinate used for menu rows, i.e. the height of the top bar. */
+    uint16_t contentTopY = 22;
+
+    /**
+     * Assumed panel height while `display.height()` is still 0 (static init runs
+     * before `Display::begin`), so paging is non-degenerate until the first sync.
+     */
+    uint16_t fallbackDisplayHeight = 240;
+
+    DrawStyle small = {1, 12, 2};
+    DrawStyle medium = {2, 20, 3};
+    DrawStyle large = {3, 28, 4};
+  };
+
+  /** Replace the active geometry. Menus re-page on their next `draw()`. */
+  void setMetrics(const Metrics &metrics) noexcept;
+  const Metrics &metrics() noexcept;
+
+  DrawStyle drawStyle(MenuSize size) noexcept;
+  int lineHeight(MenuSize size) noexcept;
+  uint16_t contentTopY() noexcept;
 
   /**
    * How many menu rows fit on screen for the given density preset and display height.
    * Uses the same row height as menu drawing (`drawStyle`) and the content top offset.
    */
-  constexpr uint8_t itemsPerPage(MenuSize size, uint16_t displayHeight) noexcept
-  {
-    const uint16_t h = displayHeight == 0 ? kFallbackDisplayHeight : displayHeight;
-    if (h <= kContentTopY)
-      return 1;
-    const int avail = static_cast<int>(h) - static_cast<int>(kContentTopY);
-    const int row = lineHeight(size);
-    const int n = row > 0 ? (avail / row) : 1;
-    if (n < 1)
-      return 1;
-    return static_cast<uint8_t>(n > 255 ? 255 : n);
-  }
+  uint8_t itemsPerPage(MenuSize size, uint16_t displayHeight) noexcept;
 }
 
 struct ActionFunction
@@ -312,6 +293,14 @@ private:
   Menu *parentMenu = nullptr;
 
   void syncItemsPerPageWithDisplay();
+
+  /**
+   * The recursive half of `update`, run against the innermost open submenu.
+   * Input is polled once by `update` before this walks down: polling per level
+   * would re-read (and, for an encoder, re-consume) the same input, leaving
+   * submenus with nothing to act on.
+   */
+  void updateActive();
 
 public:
   std::vector<MenuItem *> items;

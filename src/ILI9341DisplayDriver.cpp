@@ -1,6 +1,10 @@
 // Adafruit_ILI9341 (SPI) adapter implementation.
 #include "ILI9341DisplayDriver.h"
 
+// Compiled only when the backing panel library is present, so projects that use a
+// different driver (e.g. U8g2) need not depend on Adafruit_ILI9341.
+#if __has_include(<Adafruit_ILI9341.h>)
+
 namespace
 {
   ILI9341DisplayDriverContext *ctx(void *context)
@@ -191,3 +195,5 @@ SPIClass &ILI9341DisplayDriver::spi(ILI9341DisplayDriverContext *context)
 {
   return context->spi;
 }
+
+#endif // __has_include(<Adafruit_ILI9341.h>)

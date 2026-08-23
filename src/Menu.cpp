@@ -3,6 +3,61 @@
 
 static const char *TAG = "Menu";
 
+namespace MenuStyle
+{
+  namespace
+  {
+    Metrics gMetrics{};
+  }
+
+  void setMetrics(const Metrics &m) noexcept
+  {
+    gMetrics = m;
+  }
+
+  const Metrics &metrics() noexcept
+  {
+    return gMetrics;
+  }
+
+  DrawStyle drawStyle(MenuSize size) noexcept
+  {
+    switch (size)
+    {
+    case MenuSize::Small:
+      return gMetrics.small;
+    case MenuSize::Medium:
+      return gMetrics.medium;
+    case MenuSize::Large:
+    default:
+      return gMetrics.large;
+    }
+  }
+
+  int lineHeight(MenuSize size) noexcept
+  {
+    return drawStyle(size).lineHeight;
+  }
+
+  uint16_t contentTopY() noexcept
+  {
+    return gMetrics.contentTopY;
+  }
+
+  uint8_t itemsPerPage(MenuSize size, uint16_t displayHeight) noexcept
+  {
+    const uint16_t h = displayHeight == 0 ? gMetrics.fallbackDisplayHeight : displayHeight;
+    if (h <= gMetrics.contentTopY)
+      return 1;
+    const int avail = static_cast<int>(h) - static_cast<int>(gMetrics.contentTopY);
+    const int row = lineHeight(size);
+    const int n = row > 0 ? (avail / row) : 1;
+    if (n < 1)
+      return 1;
+    return static_cast<uint8_t>(n > 255 ? 255 : n);
+  }
+}
+
 MenuItem::MenuItem(String _name)
 {
   type = MenuItemType::None;

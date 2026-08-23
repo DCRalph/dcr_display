@@ -177,7 +177,7 @@ void Menu::draw()
 
   MenuStyle::DrawStyle style = MenuStyle::drawStyle(menuSize);
   int lineHeight = style.lineHeight;
-  int startY = MenuStyle::kContentTopY;
+  int startY = MenuStyle::contentTopY();
 
   uint8_t itemMap[numItems];
 
@@ -263,10 +263,14 @@ void MenuItem::run()
 void Menu::update()
 {
   MenuInput::update();
+  updateActive();
+}
 
+void Menu::updateActive()
+{
   if (activeSubmenu)
   {
-    activeSubmenu->update();
+    activeSubmenu->updateActive();
     return;
   }
 

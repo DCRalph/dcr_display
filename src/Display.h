@@ -33,7 +33,15 @@
 #endif
 
 class ScreenManager;
+class Display;
 struct DisplayConfig;
+struct Screen2;
+
+/**
+ * Replaces the built-in top bar. Receives the display and the screen being
+ * drawn; `screen` is never null. Install with `Display::setTopBarRenderer`.
+ */
+using TopBarRenderer = void (*)(Display &display, const Screen2 *screen);
 
 using DisplayInitFn = void (*)(void *context, const DisplayConfig &config);
 using DisplayClearFn = void (*)(void *context, uint16_t color);
@@ -129,6 +137,13 @@ public:
   void noTopBar();
   void drawTopBar();
 
+  /**
+   * Override the built-in top bar, which assumes a 20px-tall colour bar. Pass
+   * nullptr to restore the default. Useful on panels the default does not suit,
+   * e.g. a 128x64 mono OLED.
+   */
+  void setTopBarRenderer(TopBarRenderer renderer);
+
   void render();
   void render(ScreenManager &manager);
 
@@ -136,6 +151,7 @@ private:
   DisplayConfig config;
   ScreenManager *screenManager;
   bool showMenuBar;
+  TopBarRenderer topBarRenderer;
 };
 
 extern Display display;
