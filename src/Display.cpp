@@ -83,7 +83,8 @@ bool Display::begin(DisplayDriver &driver, ScreenManager *manager)
   const uint16_t w = panel->width(), h = panel->height();
   const uint8_t depth = panel->colorDepth();
   displayProfile = DisplayProfile::forPanel(w, h, depth);
-  currentTheme = Theme::forColorDepth(depth);
+  baseTheme = Theme::forColorDepth(depth);
+  currentTheme = baseTheme.withContrast(contrastBoost);
   metrics = MenuStyle::Metrics::forPanel(w, h, depth);
   idleRedrawMs = panel->buffered() ? 0 : 1000;
   textFg = currentTheme.text;
@@ -124,8 +125,15 @@ bool Display::dimRect(int32_t x, int32_t y, int32_t w, int32_t h)
 
 void Display::setTheme(const Theme &theme)
 {
-  currentTheme = theme;
+  baseTheme = theme;
+  currentTheme = theme.withContrast(contrastBoost);
   dirty = true;
+}
+
+void Display::setContrastBoost(uint8_t percent)
+{
+  contrastBoost = percent;
+  setTheme(baseTheme);
 }
 
 void Display::setProfile(const DisplayProfile &profile)

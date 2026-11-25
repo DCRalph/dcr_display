@@ -180,6 +180,11 @@ Built-in themes, set with `display.setTheme(Theme::bactosure())`:
 | `contrast()` | black and white with a yellow focus, for sunlight |
 | `mono()` | default on 1-bit panels; inversion instead of fills |
 
+Panels that wash colours out (TN LCDs viewed off-axis) can take
+`display.setContrastBoost(20)`: every theme set on that display gets
+`Theme::withContrast(20)`, which pushes each colour but the background 20%
+further from it.
+
 A theme is a value: copy a preset and change fields. Besides colours it sets:
 
 - `depth`: px raised controls (buttons, keys, cards, popups, -/+ keys) sit above a

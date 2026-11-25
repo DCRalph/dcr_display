@@ -84,7 +84,8 @@ namespace
     for (int i = 0; i < kThemeCount; i++)
     {
       const Theme p = themeAt(i);
-      if (p.background == t.background && p.accent == t.accent && p.highlight == t.highlight && p.oneBit == t.oneBit)
+      // Background and depth only: a panel's contrast boost changes the rest.
+      if (p.background == t.background && p.depth == t.depth && p.oneBit == t.oneBit)
         return i;
     }
     return 0;
