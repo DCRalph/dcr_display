@@ -656,7 +656,7 @@ void Menu::draw()
   if (highlightY.target() != highlightTarget)
     highlightY.start(highlightTarget, 130);
 
-  drawnScroll = static_cast<int16_t>(scrollY.value());
+  drawnScroll = static_cast<int32_t>(scrollY.value());
   const float scroll = drawnScroll;
   const int16_t inset = t.oneBit ? 0 : 4;
   const int16_t barRight = visible.size() > rows ? 5 : 0;
