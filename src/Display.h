@@ -18,6 +18,18 @@ using TopBarRenderer = void (*)(Display &display, const Screen2 *screen);
 /** Battery percentage for the top bar, 0-100. */
 using BatteryProvider = int (*)();
 
+// Frame timing over the last full second, from Display::stats(). Times in microseconds.
+struct FrameStats
+{
+  uint16_t fps = 0;         // frames drawn and pushed
+  uint16_t renders = 0;     // render() calls, drawn or not
+  uint32_t avgDrawUs = 0;   // building a frame: screen, top bar, popup (drawn frames)
+  uint32_t avgPushUs = 0;   // sending it to the panel (drawn frames)
+  uint32_t maxFrameUs = 0;  // worst draw + push
+  uint32_t avgUpdateUs = 0; // input and screen update (every render)
+  uint8_t loadPercent = 0;  // share of the second spent inside render()
+};
+
 // Drawing facade over one DisplayDriver, plus the frame loop. App code and the
 // library's own chrome draw through this, never through the driver directly.
 //
@@ -111,6 +123,9 @@ public:
   /** One frame: input, screen update, and a redraw when due. True if it drew. */
   bool render();
 
+  /** Timing for the last full second of render() calls. */
+  const FrameStats &stats() const { return frameStats; }
+
 private:
   int drawWrapped(const String &text, int x, int y, int width, int height, int gap, uint16_t color, int textAlignment);
 
@@ -133,6 +148,16 @@ private:
   bool dirty = true;
   uint32_t idleRedrawMs = 0;
   uint32_t lastDrawMs = 0;
+
+  struct
+  {
+    uint32_t windowStartMs = 0;
+    uint16_t frames = 0, renders = 0;
+    uint64_t drawUs = 0, pushUs = 0, updateUs = 0, renderUs = 0;
+    uint32_t maxFrameUs = 0;
+  } frameAccum;
+  FrameStats frameStats;
+  void accumulateFrame(bool drew, uint32_t drawUs, uint32_t pushUs, uint32_t updateUs, uint32_t renderUs);
 };
 
 extern Display display;

@@ -372,6 +372,7 @@ bool Display::render()
   if (!ready || !screenManager)
     return false;
   ActiveScope scope(this);
+  const uint32_t startUs = micros();
 
   Inputs::beginFrame();
 
@@ -382,27 +383,73 @@ bool Display::render()
                     now - lastDrawMs >= static_cast<uint32_t>(interval);
   dirty = false;
 
+  uint32_t drawUs = 0, pushUs = 0;
   if (draw)
   {
     clearScreen();
     screenManager->draw();
     if (showTopBar)
       drawTopBar();
+    drawUs = micros() - startUs;
   }
   showTopBar = true;
 
   // Input lands after this frame's draw, so state it changed shows on the next.
+  const uint32_t updateStartUs = micros();
   screenManager->update();
   if (Inputs::hadEventsThisFrame())
     dirty = true;
+  const uint32_t updateUs = micros() - updateStartUs;
 
   if (draw)
   {
+    const uint32_t popupStartUs = micros();
     screenManager->drawPopup();
+    const uint32_t pushStartUs = micros();
+    drawUs += pushStartUs - popupStartUs;
     push();
+    pushUs = micros() - pushStartUs;
     lastDrawMs = now;
   }
+
+  accumulateFrame(draw, drawUs, pushUs, updateUs, micros() - startUs);
   return draw;
+}
+
+void Display::accumulateFrame(bool drew, uint32_t drawUs, uint32_t pushUs, uint32_t updateUs, uint32_t renderUs)
+{
+  auto &a = frameAccum;
+  const uint32_t now = millis();
+  if (a.windowStartMs == 0)
+    a.windowStartMs = now;
+
+  a.renders++;
+  a.updateUs += updateUs;
+  a.renderUs += renderUs;
+  if (drew)
+  {
+    a.frames++;
+    a.drawUs += drawUs;
+    a.pushUs += pushUs;
+    if (drawUs + pushUs > a.maxFrameUs)
+      a.maxFrameUs = drawUs + pushUs;
+  }
+
+  const uint32_t elapsedMs = now - a.windowStartMs;
+  if (elapsedMs < 1000)
+    return;
+
+  FrameStats s;
+  s.fps = static_cast<uint16_t>(a.frames * 1000UL / elapsedMs);
+  s.renders = static_cast<uint16_t>(a.renders * 1000UL / elapsedMs);
+  s.avgDrawUs = a.frames ? a.drawUs / a.frames : 0;
+  s.avgPushUs = a.frames ? a.pushUs / a.frames : 0;
+  s.maxFrameUs = a.maxFrameUs;
+  s.avgUpdateUs = a.updateUs / a.renders;
+  s.loadPercent = static_cast<uint8_t>(min<uint64_t>(100, a.renderUs / 10 / elapsedMs));
+  frameStats = s;
+  a = {};
+  a.windowStartMs = now;
 }
 
 Display display;
