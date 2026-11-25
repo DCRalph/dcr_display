@@ -66,6 +66,8 @@ public:
 
   const Theme &theme() const { return currentTheme; }
   void setTheme(const Theme &theme);
+  /** Panel trait: every theme set from now (and the current one) gets Theme::withContrast(percent). */
+  void setContrastBoost(uint8_t percent);
   const DisplayProfile &profile() const { return displayProfile; }
   void setProfile(const DisplayProfile &profile);
 
@@ -153,6 +155,8 @@ private:
   bool ready = false;
 
   Theme currentTheme;
+  Theme baseTheme; // as passed to setTheme, before the contrast boost
+  uint8_t contrastBoost = 0;
   DisplayProfile displayProfile;
   MenuStyle::Metrics metrics;
   InputSet inputSet;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <initializer_list>
+
 #include "Color.h"
 
 // How a menu lays out its rows.
@@ -82,6 +84,20 @@ struct Theme
 
   /** Shadow under a raised surface filled with `fill`. */
   uint16_t shadowOf(uint16_t fill) const { return Color::shade(fill, shadowPercent); }
+
+  /** Every colour but the background pushed `percent` further from it, for panels that wash out. */
+  Theme withContrast(uint8_t percent) const
+  {
+    Theme t = *this;
+    if (percent == 0 || oneBit)
+      return t;
+    for (uint16_t *c : {&t.surface, &t.border, &t.track, &t.text, &t.mutedText, &t.accent, &t.onAccent, &t.highlight,
+                        &t.highlightText, &t.topBar, &t.topBarText, &t.popupBackground, &t.popupText, &t.popupTitle,
+                        &t.popupProgress, &t.widget, &t.widgetText, &t.focus, &t.focusText, &t.switchOn, &t.switchKnob,
+                        &t.success, &t.warning, &t.danger})
+      *c = Color::away(*c, background, percent);
+    return t;
+  }
 
   static Theme dark() { return Theme{}; }
 

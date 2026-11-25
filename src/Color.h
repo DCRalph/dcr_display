@@ -35,6 +35,20 @@ namespace Color
                                  ((c & 0x1F) * percent / 100));
   }
 
+  // `c` pushed `percent` further from `from`, channel by channel: more contrast
+  // against `from` with the hue roughly kept.
+  constexpr uint8_t awayChannel(int c, int from, uint8_t percent)
+  {
+    const int v = c + (c - from) * percent / 100;
+    return static_cast<uint8_t>(v < 0 ? 0 : v > 255 ? 255 : v);
+  }
+  constexpr uint16_t away(uint16_t c, uint16_t from, uint8_t percent)
+  {
+    return rgb(awayChannel(((c >> 11) & 0x1F) * 255 / 31, ((from >> 11) & 0x1F) * 255 / 31, percent),
+               awayChannel(((c >> 5) & 0x3F) * 255 / 63, ((from >> 5) & 0x3F) * 255 / 63, percent),
+               awayChannel((c & 0x1F) * 255 / 31, (from & 0x1F) * 255 / 31, percent));
+  }
+
   constexpr uint16_t Black = 0x0000;
   constexpr uint16_t White = 0xFFFF;
   constexpr uint16_t Red = 0xF800;
