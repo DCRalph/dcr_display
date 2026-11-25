@@ -57,9 +57,14 @@ void TFTDisplayDriver::fillRect(int32_t x, int32_t y, int32_t rw, int32_t rh, ui
   canvas().fillRect(x, y, rw, rh, color);
 }
 
+// Not frame.fillScreen(): TFT_eSprite inherits it from TFT_eSPI, which fills the
+// panel's unrotated TFT_WIDTH x TFT_HEIGHT and so misses part of a rotated sprite.
 void TFTDisplayDriver::fillScreen(uint16_t color)
 {
-  canvas().fillScreen(color);
+  if (spriteReady)
+    frame.fillSprite(color);
+  else
+    panel.fillScreen(color);
 }
 
 void TFTDisplayDriver::drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t color)
