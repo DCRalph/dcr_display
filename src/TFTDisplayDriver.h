@@ -5,11 +5,6 @@
 
 #include <TFT_eSPI.h>
 
-#ifndef LOAD_GFXFF
-// The setup has no free fonts: roles fall back to scaled built-in text.
-struct GFXfont;
-#endif
-
 #include "DisplayDriver.h"
 #include "FrameDiff.h"
 
@@ -50,12 +45,16 @@ public:
   int16_t textWidth(const char *text) override;
   int16_t fontHeight() override;
 
+#ifdef LOAD_GFXFF
   /**
    * Font per role. Defaults: built-in font for Small, FreeSans 9 / Bold 12 /
-   * Bold 18 for Body, Title and XLarge (needs LOAD_GFXFF). nullptr gives the
-   * built-in font at `scale`.
+   * Bold 18 for Body, Title and XLarge. nullptr gives the built-in font at `scale`.
    */
   void setRoleFont(TextRole role, const GFXfont *font, uint8_t scale = 1);
+#else
+  /** Without LOAD_GFXFF every role is the built-in font at an integer scale. */
+  void setRoleScale(TextRole role, uint8_t scale);
+#endif
 
   TFT_eSPI &tft() { return panel; }
   TFT_eSprite &sprite() { return frame; }
@@ -80,7 +79,7 @@ protected:
   FrameDiff diff;
   struct RoleFont
   {
-    const GFXfont *font;
+    const void *font; // const GFXfont * when LOAD_GFXFF
     uint8_t scale;
     int8_t ascent, descent; // glyph extent above/below the baseline, from the font
   };

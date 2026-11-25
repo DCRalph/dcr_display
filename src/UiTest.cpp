@@ -468,7 +468,8 @@ namespace
     const int16_t barH = small ? 6 : 10;
     const int16_t laneH = (d.height() - top() - barH - 8) / lanes_n;
     const int16_t ball = min<int16_t>(laneH - 4, small ? 8 : 14);
-    const int16_t x0 = labelW + 4, span = d.width() - x0 - ball - 6;
+    // outBack overshoots by about 10%: leave room so it stays on screen.
+    const int16_t x0 = labelW + 4, span = (d.width() - x0 - ball - 6) * 88 / 100;
 
     for (int16_t i = 0; i < lanes_n; i++)
     {

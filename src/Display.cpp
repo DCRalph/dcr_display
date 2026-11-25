@@ -54,9 +54,10 @@ void Display::removeInput(InputSource &source)
 
 void Display::animateFor(uint32_t ms)
 {
-  const uint32_t until = millis() + ms + 20; // one frame past the end, to draw the final value
-  if (static_cast<int32_t>(until - animateUntilMs) > 0)
+  const uint32_t until = millis() + ms;
+  if (!animationPending || static_cast<int32_t>(until - animateUntilMs) > 0)
     animateUntilMs = until;
+  animationPending = true;
   dirty = true;
 }
 
@@ -401,7 +402,12 @@ bool Display::render()
   const uint32_t now = millis();
   const Screen2 *screen = screenManager->getCurrentScreen();
   const int32_t interval = screen && screen->redrawMs >= 0 ? screen->redrawMs : static_cast<int32_t>(idleRedrawMs);
-  const bool animating = static_cast<int32_t>(animateUntilMs - now) > 0;
+  // Draw every frame while a tween runs, and once more after the last one ends so
+  // its final value lands even if that frame came late. Cleared before drawing,
+  // so a tween started by this frame's draw schedules the next.
+  const bool animating = animationPending;
+  if (animationPending && static_cast<int32_t>(animateUntilMs - now) <= 0)
+    animationPending = false;
   const bool draw = dirty || animating || screenManager->isPopupActive() || interval == 0 ||
                     now - lastDrawMs >= static_cast<uint32_t>(interval);
   dirty = false;

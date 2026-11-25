@@ -133,6 +133,11 @@ void Slider::draw(bool focused, bool pressed) const
                   t.oneBit ? Color::White : t.accent);
 }
 
+int Slider::stepSize() const
+{
+  return step == 0 ? 1 : abs(step);
+}
+
 void Slider::set(int v)
 {
   v = constrain(v, minValue, maxValue);
@@ -145,7 +150,7 @@ void Slider::set(int v)
 
 void Slider::adjust(int steps)
 {
-  set(*value + steps * step);
+  set(*value + steps * stepSize());
 }
 
 void Slider::drag(int16_t x, int16_t)
@@ -153,8 +158,14 @@ void Slider::drag(int16_t x, int16_t)
   const Rect tr = track();
   if (tr.w <= 0)
     return;
+  // The ends map exactly to min and max; between them the value snaps to steps.
+  if (x <= tr.x)
+    return set(minValue);
+  if (x >= tr.x + tr.w)
+    return set(maxValue);
+  const int s = stepSize();
   const int32_t raw = (int32_t)(x - tr.x) * (maxValue - minValue) / tr.w;
-  set(static_cast<int>(minValue + (raw + step / 2) / step * step));
+  set(static_cast<int>(minValue + (raw + s / 2) / s * s));
 }
 
 void FocusGroup::clear()
@@ -208,6 +219,14 @@ bool FocusGroup::update()
   for (const InputEvent &e : Inputs::events())
   {
     Widget *w = current();
+    if (!w)
+      break; // a callback emptied the group
+    if (e.kind == InputKind::PointerUp)
+    {
+      pressed = -1;
+      consumed = true;
+      continue;
+    }
     if (w->editing)
     {
       // Editing a slider: every navigation input changes it; select or back ends it.
@@ -277,9 +296,6 @@ bool FocusGroup::update()
     case InputKind::PointerMove:
       if (pressed >= 0)
         widgets[pressed]->drag(e.x, e.y);
-      break;
-    case InputKind::PointerUp:
-      pressed = -1;
       break;
     case InputKind::Tap:
       for (size_t i = 0; i < widgets.size(); i++)

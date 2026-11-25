@@ -545,25 +545,26 @@ void Menu::handle(const InputEvent &e)
 
 void Menu::tap(int16_t x, int16_t y)
 {
+  // Hit-test against the list as drawn, mid-scroll included.
+  const int slot = slotAt(y);
+  if (slot < 0)
+    return;
   const int rowH = MenuStyle::lineHeight(menuSize);
   const int top = MenuStyle::contentTopY();
-  if (y < top || rowH <= 0)
-    return;
 
   std::vector<uint16_t> visible;
   for (size_t i = 0; i < items.size(); i++)
     if (!items[i]->isHidden())
       visible.push_back(static_cast<uint16_t>(i));
 
-  const size_t slot = topVisible + (y - top) / rowH;
   MenuItem *current = items[active];
-
   if (current->isEditing())
   {
-    if (slot < visible.size() && visible[slot] == active)
+    if (slot < static_cast<int>(visible.size()) && visible[slot] == active)
     {
       Rect minus, plus;
-      MenuStyle::editTargets(static_cast<int16_t>(top + (slot - topVisible) * rowH), static_cast<int16_t>(rowH), minus, plus);
+      MenuStyle::editTargets(static_cast<int16_t>(top + slot * rowH - scrollY.value()), static_cast<int16_t>(rowH),
+                             minus, plus);
       if (plus.contains(x, y))
         current->adjust(1);
       else if (minus.contains(x, y))
@@ -576,7 +577,7 @@ void Menu::tap(int16_t x, int16_t y)
     return;
   }
 
-  if (slot >= visible.size())
+  if (slot >= static_cast<int>(visible.size()))
     return;
   active = visible[slot];
   items[active]->run(1, 1);
@@ -605,7 +606,7 @@ int Menu::slotAt(int16_t y) const
 {
   const int rowH = MenuStyle::lineHeight(menuSize);
   const int top = MenuStyle::contentTopY();
-  if (y < top || rowH <= 0)
+  if (y < top || rowH <= 0 || y >= top + getItemsPerPage() * rowH)
     return -1;
   return static_cast<int>((y - top + scrollY.value()) / rowH);
 }
@@ -673,7 +674,8 @@ void Menu::draw()
 
   // Rows whose slot the scroll position touches, partial ones included.
   const int first = max(0, static_cast<int>(scroll) / rowH);
-  const int last = min<int>(visible.size() - 1, (static_cast<int>(scroll) + rows * rowH) / rowH);
+  // Rows inside the viewport; a partial one only while scrolling between pages.
+  const int last = min<int>(visible.size() - 1, (static_cast<int>(scroll) + rows * rowH - 1) / rowH);
   for (int slot = first; slot <= last; slot++)
   {
     const int16_t y = static_cast<int16_t>(top + slot * rowH - scroll);

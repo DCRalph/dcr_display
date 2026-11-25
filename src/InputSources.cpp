@@ -303,8 +303,8 @@ void TouchInput::poll(InputQueue &queue)
   if (!touched && down_)
   {
     down_ = false;
-    // A finger that stopped before lifting has no fling.
-    if (now - lastMoveMs_ > 80)
+    // No fling for a finger that stopped before lifting, stayed within tap slop, or long-pressed.
+    if (now - lastMoveMs_ > 80 || !moved_ || longFired_)
       velocity_ = 0;
 
     InputEvent up{InputKind::PointerUp};
@@ -314,7 +314,7 @@ void TouchInput::poll(InputQueue &queue)
     queue.push(up);
 
     const int16_t dx = lastX_ - startX_, dy = lastY_ - startY_;
-    if (config_.swipeMinPx && moved_ && now - downMs_ <= config_.swipeMaxMs &&
+    if (config_.swipeMinPx && moved_ && !longFired_ && now - downMs_ <= config_.swipeMaxMs &&
         max(abs(dx), abs(dy)) >= config_.swipeMinPx)
     {
       InputEvent swipe{InputKind::Swipe};

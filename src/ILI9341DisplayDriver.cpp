@@ -52,6 +52,7 @@ bool ILI9341DisplayDriver::begin()
   panel.begin(spiFrequency);
   panel.setRotation(rotation);
   panel.fillScreen(ILI9341_BLACK);
+  panel.setTextWrap(false); // Display does its own wrapping; GFX wrapping breaks width measurement
   if (wantBuffer)
   {
     canvas = new GFXcanvas16(panel.width(), panel.height());
@@ -61,7 +62,9 @@ bool ILI9341DisplayDriver::begin()
       canvas = nullptr;
       debugW("No memory for a frame buffer; drawing direct to the panel");
     }
-    else if (partialPush && !diff.begin(canvas->width(), canvas->height()))
+    else
+      canvas->setTextWrap(false);
+    if (canvas && partialPush && !diff.begin(canvas->width(), canvas->height()))
       debugW("No memory for change tracking; pushing whole frames");
   }
   return true;

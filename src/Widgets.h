@@ -99,6 +99,7 @@ public:
 
 private:
   void set(int v);
+  int stepSize() const;
   Rect track() const;
 
   int *value;

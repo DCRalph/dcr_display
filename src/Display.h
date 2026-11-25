@@ -170,6 +170,7 @@ private:
   bool showTopBar = true;
   bool dirty = true;
   bool animations = true;
+  bool animationPending = false; // a tween is running, or its final frame is not drawn yet
   uint32_t animateUntilMs = 0;
   uint32_t idleRedrawMs = 0;
   uint32_t lastDrawMs = 0;
