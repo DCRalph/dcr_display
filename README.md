@@ -120,6 +120,18 @@ redraws every frame.
 - `Keyboard` is an on-screen keyboard covering all printable ASCII, usable by
   touch, joystick, buttons or encoder.
 
+## UI test screens
+
+`UiTest::RootScreen` reaches screens that exercise every feature on the app's
+own panel and inputs: menu items (numbers, floats, selects, click-count actions,
+hiding, submenus), a live input event log, popups (including one shown from
+another task), a button grid, the keyboard, drawing primitives and datums,
+redraw policy, and a background task with a watchdog overrun. Add one entry:
+
+```cpp
+MenuItemNavigate uiTestItem("UI test", &UiTest::RootScreen);
+```
+
 ## Screens
 
 `Screen2` is a plain descriptor. A screen can also declare `backgroundTask`: a

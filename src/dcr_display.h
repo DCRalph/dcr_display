@@ -10,4 +10,5 @@
 #include "Popup.h"
 #include "ScreenManager.h"
 #include "Theme.h"
+#include "UiTest.h"
 #include "Widgets.h"

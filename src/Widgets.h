@@ -30,9 +30,9 @@ public:
   bool enabled = true;
 };
 
-// Focus and activation for a set of buttons, from any input source: encoder
-// steps and up/down move linearly, left/right move by one, up/down move by
-// `columns` in a grid, select presses, taps press what they hit.
+// Focus and activation for buttons laid out `columns` wide, from any input
+// source. Encoder steps and left/right walk row by row; up/down walk column by
+// column, so a device with only up/down buttons still reaches every button.
 class FocusGroup
 {
 public:
@@ -48,6 +48,7 @@ public:
 
 private:
   void move(int steps);
+  void moveVertical(int steps);
 
   std::vector<Button *> buttons;
   size_t focused = 0;
@@ -55,7 +56,8 @@ private:
 };
 
 // On-screen keyboard that fills `bounds`: letters, shift, and two symbol layers
-// covering all printable ASCII. Works by touch, joystick, buttons or encoder.
+// covering all printable ASCII. Works by touch, joystick, buttons or encoder:
+// up/down wrap into the next column, so up/down alone reach every key.
 class Keyboard
 {
 public:
@@ -98,8 +100,11 @@ private:
   void moveFocus(int dRow, int dCol);
   void linearStep(int steps);
   bool firstColOfKey(uint8_t row, uint8_t col) const;
+  /** A key that can take focus: the first column of a key, and not blank on this layer. */
+  bool focusable(uint8_t row, uint8_t col) const;
 
   Rect bounds;
   Layer layer = Layer::Lower;
   uint8_t focusRow = 0, focusCol = 0;
+  uint8_t cursorCol = 0; // column vertical moves track, before snapping to a wide key
 };
