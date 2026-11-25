@@ -107,6 +107,25 @@ void TFTDisplayDriver::fillScreen(uint16_t color)
   fillRect(0, 0, w, h, color);
 }
 
+bool TFTDisplayDriver::dimRect(int32_t x, int32_t y, int32_t rw, int32_t rh)
+{
+  if (!spriteReady || !FastFill::clip(x, y, rw, rh, w, h))
+    return spriteReady;
+  // Sprite pixels are byte-swapped RGB565: unswap, halve each channel, swap back.
+  uint16_t *frameBuf = static_cast<uint16_t *>(frame.getPointer());
+  for (int32_t row = y; row < y + rh; row++)
+  {
+    uint16_t *p = frameBuf + row * w + x;
+    for (int32_t i = 0; i < rw; i++)
+    {
+      const uint16_t c = static_cast<uint16_t>(p[i] >> 8 | p[i] << 8);
+      const uint16_t half = (c >> 1) & 0x7BEF;
+      p[i] = static_cast<uint16_t>(half >> 8 | half << 8);
+    }
+  }
+  return true;
+}
+
 void TFTDisplayDriver::drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t color)
 {
   target().drawLine(x0, y0, x1, y1, color);

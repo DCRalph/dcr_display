@@ -117,6 +117,11 @@ uint8_t Display::colorDepth() const
   return panel ? panel->colorDepth() : 16;
 }
 
+bool Display::dimRect(int32_t x, int32_t y, int32_t w, int32_t h)
+{
+  return panel && !currentTheme.oneBit && panel->dimRect(x, y, w, h);
+}
+
 void Display::setTheme(const Theme &theme)
 {
   currentTheme = theme;

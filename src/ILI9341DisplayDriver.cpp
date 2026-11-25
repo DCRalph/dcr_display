@@ -110,6 +110,20 @@ uint16_t ILI9341DisplayDriver::height() const
   return const_cast<Adafruit_ILI9341 &>(panel).height();
 }
 
+bool ILI9341DisplayDriver::dimRect(int32_t x, int32_t y, int32_t rw, int32_t rh)
+{
+  if (!canvas)
+    return false;
+  const int32_t cw = canvas->width(), ch = canvas->height();
+  if (!FastFill::clip(x, y, rw, rh, cw, ch))
+    return true;
+  uint16_t *buf = canvas->getBuffer();
+  for (int32_t row = y; row < y + rh; row++)
+    for (int32_t i = 0; i < rw; i++)
+      buf[row * cw + x + i] = (buf[row * cw + x + i] >> 1) & 0x7BEF; // each channel halved
+  return true;
+}
+
 void ILI9341DisplayDriver::drawPixel(int32_t x, int32_t y, uint16_t color)
 {
   target().drawPixel(x, y, color);

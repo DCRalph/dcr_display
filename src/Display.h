@@ -74,6 +74,8 @@ public:
    * draw() starts with this skips the library's own pre-clear on later frames.
    */
   void clearScreen(int32_t color = kThemeColor);
+  /** Darkens what is drawn in the rect, behind a sheet or popup; no-op on unbuffered and 1-bit panels. */
+  bool dimRect(int32_t x, int32_t y, int32_t w, int32_t h);
   void fillScreen(int32_t color = kThemeColor);
   void push();
 

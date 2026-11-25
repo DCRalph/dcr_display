@@ -116,6 +116,8 @@ public:
   virtual bool editTap(int16_t x, int16_t y);
   /** True if Up should step back through the options (a vertical list). */
   virtual bool editIsList() const { return false; }
+  /** Pointer and swipe events while editing, before the menu's own handling; true if used. */
+  virtual bool editPointer(const InputEvent &e) { return false; }
 
   std::vector<ActionFunction> functions;
 
@@ -368,6 +370,7 @@ public:
   void drawEditOverlay(const Rect &area) override;
   bool editTap(int16_t x, int16_t y) override;
   bool editIsList() const override;
+  bool editPointer(const InputEvent &e) override;
 
 protected:
   bool editsInline() const override;
@@ -385,6 +388,10 @@ private:
   Rect sheet, sheetOptions;
   int sheetFirst = 0;
   int16_t sheetOptionH = 0;
+  // Dragging the sheet down by its handle: where the finger started, and how far down it is.
+  Rect sheetGrip;
+  bool sheetDragging = false;
+  int16_t sheetDragStartY = 0, sheetDragY = 0;
   std::vector<String> options;
   int currentIndex = 0;
   bool selected = false;

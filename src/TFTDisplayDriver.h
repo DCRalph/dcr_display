@@ -74,6 +74,7 @@ public:
     return target();
   }
   void resync() override { diff.invalidate(); }
+  bool dimRect(int32_t x, int32_t y, int32_t w, int32_t h) override;
 
 protected:
   TFT_eSPI &target() { return spriteReady ? static_cast<TFT_eSPI &>(frame) : panel; }

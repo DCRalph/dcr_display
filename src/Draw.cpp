@@ -32,7 +32,7 @@ void Draw::switchGlyph(int16_t x, int16_t y, int16_t w, int16_t h, float on, boo
   // On a highlighted row whose fill is the switch colour, the track turns to the row's ink.
   const bool clash = onFill && t.switchOn == t.highlight;
   const uint16_t onTrack = clash ? t.highlightText : t.switchOn;
-  const uint16_t track = Color::blend(t.border, onTrack, static_cast<uint8_t>(on * 255));
+  const uint16_t track = Color::blend(t.track, onTrack, static_cast<uint8_t>(on * 255));
   d.fillRoundRect(x, y, w, h, r, track);
   d.fillRoundRect(knobX, y + inset, knob, knob, knob / 2, clash && on > 0.5f ? t.highlight : t.switchKnob);
 }
@@ -79,7 +79,10 @@ void Draw::raised(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_
   const int16_t depth = t.oneBit ? 0 : t.depth;
   if (depth == 0)
   {
+    // Flat: an outline stands in for the shadow, so the surface still has an edge.
     d.fillRoundRect(x, y, w, h, r, fill);
+    if (!t.oneBit)
+      d.drawRoundRect(x, y, w, h, r, t.border);
     return;
   }
   if (pressed)

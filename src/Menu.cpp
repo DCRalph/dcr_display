@@ -302,7 +302,7 @@ void MenuItemNumberBase::draw(int16_t x, int16_t y, bool active)
   const int16_t barH = frac >= 0 ? 4 : 0;
 
   d.setTextRole(t.oneBit ? TextRole::Small : TextRole::Body);
-  d.setTextColor(t.mutedText);
+  d.setTextColor(t.text);
   d.setTextDatum(Datum::TopLeft);
   d.drawString(getName(), x + pad, y + 5);
 
@@ -334,7 +334,7 @@ void MenuItemNumberBase::draw(int16_t x, int16_t y, bool active)
   if (barH)
   {
     const int16_t barX = x + pad, barW = w - 2 * pad, barY = y + h - barH - 8;
-    d.fillRoundRect(barX, barY, barW, barH, barH / 2, t.oneBit ? Color::Black : t.border);
+    d.fillRoundRect(barX, barY, barW, barH, barH / 2, t.oneBit ? Color::Black : t.track);
     if (t.oneBit)
       d.drawRoundRect(barX, barY, barW, barH, barH / 2, t.text);
     const int16_t fill = static_cast<int16_t>(barW * constrain(frac, 0.0f, 1.0f));
@@ -544,7 +544,7 @@ void MenuItemSelect::draw(int16_t x, int16_t y, bool active)
   Display &d = Display::active();
   const Theme &t = d.theme();
   d.setTextRole(t.oneBit ? TextRole::Small : TextRole::Body);
-  d.setTextColor(t.mutedText);
+  d.setTextColor(t.text);
   d.setTextDatum(Datum::TopLeft);
   d.drawString(getName(), x + 10, y + 5);
 
@@ -564,7 +564,7 @@ void MenuItemSelect::draw(int16_t x, int16_t y, bool active)
   if (t.oneBit)
     d.drawRoundRect(strip.x, strip.y, strip.w, strip.h, r, t.text);
   else
-    d.fillRoundRect(strip.x, strip.y, strip.w, strip.h, r, Color::blend(t.surface, t.border, 110));
+    d.fillRoundRect(strip.x, strip.y, strip.w, strip.h, r, Color::blend(t.surface, t.track, 70));
   const int16_t n = static_cast<int16_t>(options.size());
   const int16_t segW = strip.w / n;
   const int16_t depth = t.oneBit ? 0 : t.depth;
@@ -581,7 +581,7 @@ void MenuItemSelect::draw(int16_t x, int16_t y, bool active)
         Draw::raised(sx + inset, strip.y + inset, segW - 2 * inset, strip.h - 2 * inset - depth, max<int16_t>(0, r - 2), t.highlight);
     }
     d.setTextRole(TextRole::Body);
-    d.setTextColor(on ? (t.oneBit ? Color::Black : t.highlightText) : t.mutedText);
+    d.setTextColor(on ? (t.oneBit ? Color::Black : t.highlightText) : t.text);
     d.setTextDatum(Datum::MiddleCenter);
     d.drawString(options[i], sx + segW / 2, strip.y + (strip.h - (on ? depth : 0)) / 2);
   }
@@ -601,9 +601,14 @@ void MenuItemSelect::drawEditOverlay(const Rect &area)
   const int16_t shown = max<int16_t>(1, min<int16_t>(n, (area.h - titleH - 10) / optH));
   const int16_t sheetH = titleH + shown * optH + 8;
   const int16_t margin = t.oneBit ? 0 : 6;
-  const int16_t sheetY = area.y + area.h - static_cast<int16_t>(sheetH * editGrow);
+  if (editGrow <= 0.001f)
+    sheetDragY = 0; // fully closed: the next open starts from the bottom edge
+  const int16_t sheetY = area.y + area.h - static_cast<int16_t>(sheetH * editGrow) + sheetDragY;
   const int16_t r = t.oneBit ? 3 : 12;
   sheet = Rect{static_cast<int16_t>(area.x + margin), sheetY, static_cast<int16_t>(area.w - 2 * margin), sheetH};
+  // The handle and title take a drag; generous, since a thumb covers the handle.
+  sheetGrip = Rect{sheet.x, static_cast<int16_t>(sheet.y - 10), sheet.w, static_cast<int16_t>(titleH + 10)};
+  d.dimRect(area.x, area.y, area.w, area.h); // the menu recedes behind it
 
   if (t.oneBit)
   {
@@ -616,7 +621,7 @@ void MenuItemSelect::drawEditOverlay(const Rect &area)
     const int16_t rim = max<int16_t>(2, t.depth);
     d.fillRoundRect(sheet.x, sheet.y - rim, sheet.w, sheet.h + r + rim, r, t.shadowOf(t.surface));
     d.fillRoundRect(sheet.x, sheet.y, sheet.w, sheet.h + r, r, t.surface);
-    d.fillRoundRect(sheet.x + sheet.w / 2 - 16, sheet.y + 5, 32, 4, 2, t.border);
+    d.fillRoundRect(sheet.x + sheet.w / 2 - 18, sheet.y + 5, 36, 5, 2, t.track);
   }
 
   d.setTextRole(t.oneBit ? TextRole::Small : TextRole::Body);
@@ -646,6 +651,46 @@ void MenuItemSelect::drawEditOverlay(const Rect &area)
     d.drawString(options[index], sheetOptions.x + 10, oy + optH / 2);
     if (!t.oneBit)
       Draw::radio(sheetOptions.x + sheetOptions.w - 16, oy + optH / 2, 7, on, on ? ink : t.mutedText, ink, fill);
+  }
+}
+
+bool MenuItemSelect::editPointer(const InputEvent &e)
+{
+  if (style() != SelectEdit::Sheet)
+    return false;
+  switch (e.kind)
+  {
+  case InputKind::PointerDown:
+    if (!sheetGrip.contains(e.x, e.y))
+      return false;
+    sheetDragging = true;
+    sheetDragStartY = e.y;
+    sheetDragY = 0;
+    return true;
+  case InputKind::PointerMove:
+    if (!sheetDragging)
+      return false;
+    sheetDragY = max<int16_t>(0, e.y - sheetDragStartY);
+    return true;
+  case InputKind::PointerUp:
+    if (!sheetDragging)
+      return false;
+    sheetDragging = false;
+    // Far enough, or flicked down: close from where it is; else spring back.
+    if (sheetDragY > sheet.h / 3 || e.value > 40)
+      stopEditing();
+    else
+      sheetDragY = 0;
+    return true;
+  case InputKind::Swipe:
+    if (e.value == static_cast<int16_t>(SwipeDir::Down) && sheet.contains(e.x, e.y))
+    {
+      stopEditing();
+      return true;
+    }
+    return false;
+  default:
+    return false;
   }
 }
 
@@ -856,6 +901,8 @@ void Menu::handle(const InputEvent &e)
   MenuItem *item = items[active];
   const bool editing = item->isEditing();
   const int rowH = MenuStyle::lineHeight(menuSize);
+  if (editing && item->editPointer(e))
+    return;
 
   switch (e.kind)
   {

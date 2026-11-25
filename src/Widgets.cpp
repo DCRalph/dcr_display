@@ -132,7 +132,7 @@ void Slider::draw(bool focused, bool pressed) const
 
   const Rect tr = track();
   const int16_t fill = maxValue != minValue ? static_cast<int16_t>((int32_t)tr.w * (*value - minValue) / (maxValue - minValue)) : 0;
-  d.fillRoundRect(tr.x, tr.y, tr.w, tr.h, 2, t.border);
+  d.fillRoundRect(tr.x, tr.y, tr.w, tr.h, 2, t.oneBit ? t.border : t.track);
   d.fillRoundRect(tr.x, tr.y, fill, tr.h, 2, t.accent);
   const int16_t knob = std::min<int16_t>(t.oneBit ? 9 : 14, bounds.h / 2) + (pressed ? 2 : 0);
   // 1-bit: a hollow knob, so it stands out from the filled track.
@@ -624,7 +624,9 @@ void Keyboard::draw()
       }
       else
       {
-        const uint16_t fill = control ? t.border : t.surface;
+        // Control keys take the border tone eased toward the surface, which keeps
+        // their labels above 4.5:1 where the border is dark (bactosure).
+        const uint16_t fill = control ? Color::blend(t.border, t.surface, 64) : t.surface;
         Draw::raised(r.x, r.y, r.w, faceH, radius, fill);
         // Whichever of the theme's text and background reads better on the key.
         const int textGap = abs(static_cast<int>(Color::luma(t.text)) - Color::luma(fill));

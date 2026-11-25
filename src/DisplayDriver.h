@@ -32,6 +32,11 @@ public:
   virtual uint8_t lastPushPercent() const { return 100; }
   /** Make the next push() send the whole frame, e.g. after drawing to the panel directly. */
   virtual void resync() {}
+  /**
+   * Halves the brightness of what is already drawn in the rect, behind an overlay.
+   * False where the driver has no frame to darken (the overlay then draws as is).
+   */
+  virtual bool dimRect(int32_t x, int32_t y, int32_t w, int32_t h) { return false; }
 
   virtual void drawPixel(int32_t x, int32_t y, uint16_t color) = 0;
   virtual void fillRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t color) = 0;
