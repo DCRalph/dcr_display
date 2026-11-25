@@ -10,7 +10,7 @@ void Button::draw(bool focused, bool pressed) const
   Display &d = Display::active();
   const Theme &t = d.theme();
   const int16_t r = Draw::radius(bounds.h);
-  uint16_t fill = t.surface, ink = t.widgetText, outline = t.border;
+  uint16_t fill = t.widget, ink = t.widgetText, outline = t.border;
 
   if (t.oneBit)
   {
@@ -33,11 +33,20 @@ void Button::draw(bool focused, bool pressed) const
     outline = t.accent;
   if (!enabled)
     ink = t.mutedText;
-  if (pressed && !t.oneBit)
+  // With depth, the face sits on a shadow inside the bounds and travels onto it when pressed.
+  const int16_t depth = t.oneBit || style == Style::Ghost ? 0 : t.depth;
+  if (pressed && !t.oneBit && depth == 0)
     fill = Color::blend(fill, Color::Black, 70);
+  const int16_t faceH = bounds.h - depth;
+  const int16_t faceY = bounds.y + (pressed ? depth : 0);
 
-  d.fillRoundRect(bounds.x, bounds.y, bounds.w, bounds.h, r, fill);
-  d.drawRoundRect(bounds.x, bounds.y, bounds.w, bounds.h, r, outline);
+  if (depth > 0)
+    Draw::raised(bounds.x, bounds.y, bounds.w, faceH, r, fill, pressed);
+  else
+  {
+    d.fillRoundRect(bounds.x, bounds.y, bounds.w, bounds.h, r, fill);
+    d.drawRoundRect(bounds.x, bounds.y, bounds.w, bounds.h, r, outline);
+  }
   if (t.oneBit && style == Style::Primary && !focused)
     d.drawRoundRect(bounds.x + 1, bounds.y + 1, bounds.w - 2, bounds.h - 2, max<int16_t>(0, r - 1), outline);
   if (focused && !t.oneBit)
@@ -46,7 +55,7 @@ void Button::draw(bool focused, bool pressed) const
   d.setTextRole(bounds.h >= 28 ? TextRole::Body : TextRole::Small);
   d.setTextColor(ink);
   d.setTextDatum(Datum::MiddleCenter);
-  d.drawString(label, bounds.x + bounds.w / 2, bounds.y + bounds.h / 2);
+  d.drawString(label, bounds.x + bounds.w / 2, faceY + faceH / 2);
 }
 
 void Button::press() const
@@ -600,9 +609,12 @@ void Keyboard::draw()
       const int16_t radius = min<int16_t>(t.oneBit ? 2 : 5, r.h / 2);
 
       uint16_t ink = t.text;
+      // Keys are raised when the theme has depth (they leave it below the face).
+      const int16_t depth = t.oneBit || small ? 0 : min<int16_t>(t.depth, 2);
+      const int16_t faceH = r.h - depth;
       if (focused)
       {
-        d.fillRoundRect(r.x, r.y, r.w, r.h, radius, t.focus);
+        Draw::raised(r.x, r.y, r.w, faceH, radius, t.focus);
         ink = t.focusText;
       }
       else if (t.oneBit)
@@ -611,10 +623,17 @@ void Keyboard::draw()
           d.drawRoundRect(r.x, r.y, r.w, r.h, radius, t.border);
       }
       else
-        d.fillRoundRect(r.x, r.y, r.w, r.h, radius, control ? t.border : t.surface);
+      {
+        const uint16_t fill = control ? t.border : t.surface;
+        Draw::raised(r.x, r.y, r.w, faceH, radius, fill);
+        // Whichever of the theme's text and background reads better on the key.
+        const int textGap = abs(static_cast<int>(Color::luma(t.text)) - Color::luma(fill));
+        const int backGap = abs(static_cast<int>(Color::luma(t.background)) - Color::luma(fill));
+        ink = textGap >= backGap ? t.text : t.background;
+      }
 
       d.setTextColor(ink);
-      d.drawString(label, r.x + r.w / 2, r.y + r.h / 2);
+      d.drawString(label, r.x + r.w / 2, r.y + faceH / 2);
     }
   }
 }

@@ -27,6 +27,14 @@ namespace Color
                                  (((a & 0x1F) * (255 - t) + (b & 0x1F) * t) / 255));
   }
 
+  // The colour at `percent` of its brightness, for shadows and pressed states.
+  constexpr uint16_t shade(uint16_t c, uint8_t percent)
+  {
+    return static_cast<uint16_t>(((((c >> 11) & 0x1F) * percent / 100) << 11) |
+                                 ((((c >> 5) & 0x3F) * percent / 100) << 5) |
+                                 ((c & 0x1F) * percent / 100));
+  }
+
   constexpr uint16_t Black = 0x0000;
   constexpr uint16_t White = 0xFFFF;
   constexpr uint16_t Red = 0xF800;

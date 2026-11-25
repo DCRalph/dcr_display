@@ -53,11 +53,16 @@ void Popup::drawFrame(const Box &b)
   Display &d = Display::active();
   const Theme &t = d.theme();
   const int16_t r = d.profile().popupRadius;
-  // A dark band under the card stands in for a shadow on colour panels.
+  // A solid drop shadow on colour panels: the theme's depth, or a dark band when flat.
   if (!t.oneBit)
-    d.fillRoundRect(b.x + 2, b.y + 4, b.w, b.h, r, Color::blend(t.background, Color::Black, 160));
+  {
+    const int16_t drop = t.depth > 0 ? t.depth + 1 : 4;
+    const uint16_t shadow = t.depth > 0 ? t.shadowOf(t.popupBackground) : Color::blend(t.background, Color::Black, 160);
+    d.fillRoundRect(b.x + (t.depth > 0 ? 0 : 2), b.y + drop, b.w, b.h, r, shadow);
+  }
   d.fillRoundRect(b.x, b.y, b.w, b.h, r, t.popupBackground);
-  d.drawRoundRect(b.x, b.y, b.w, b.h, r, t.border);
+  if (t.oneBit || t.depth == 0)
+    d.drawRoundRect(b.x, b.y, b.w, b.h, r, t.border);
 }
 
 void Popup::drawText(const Box &b, uint16_t titleColor)
