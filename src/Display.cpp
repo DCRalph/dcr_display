@@ -121,8 +121,11 @@ void Display::setProfile(const DisplayProfile &profile)
 
 void Display::clearScreen(int32_t color)
 {
-  if (panel)
-    panel->fillScreen(color == kThemeColor ? currentTheme.background : static_cast<uint16_t>(color));
+  if (!panel)
+    return;
+  if (drawingScreen)
+    sawScreenFill = true;
+  panel->fillScreen(color == kThemeColor ? currentTheme.background : static_cast<uint16_t>(color));
 }
 
 void Display::fillScreen(int32_t color)
@@ -360,10 +363,13 @@ void Display::drawTopBar()
 
   if (batteryProvider)
   {
-    char buf[8];
-    snprintf(buf, sizeof(buf), "%d%%", batteryProvider());
+    if (batteryReadMs == 0 || millis() - batteryReadMs >= 1000)
+    {
+      batteryReadMs = millis();
+      snprintf(batteryText, sizeof(batteryText), "%d%%", batteryProvider());
+    }
     setTextDatum(Datum::MiddleRight);
-    drawString(buf, width() - p.topBarPaddingX, midY);
+    drawString(batteryText, width() - p.topBarPaddingX, midY);
   }
 }
 
@@ -386,8 +392,27 @@ bool Display::render()
   uint32_t drawUs = 0, pushUs = 0;
   if (draw)
   {
-    clearScreen();
+    // Skip the pre-clear for a screen that filled the frame itself last time; if
+    // it stops doing so, clear and draw it again this frame.
+    const Screen2 *drawn = screenManager->getCurrentScreen();
+    if (drawn != lastDrawnScreen)
+      screenFillsFrame = false;
+    lastDrawnScreen = drawn;
+
+    const bool preCleared = !screenFillsFrame;
+    if (preCleared)
+      clearScreen();
+    sawScreenFill = false;
+    drawingScreen = true;
     screenManager->draw();
+    drawingScreen = false;
+    if (!preCleared && !sawScreenFill)
+    {
+      clearScreen();
+      screenManager->draw();
+    }
+    screenFillsFrame = sawScreenFill;
+
     if (showTopBar)
       drawTopBar();
     drawUs = micros() - startUs;
@@ -409,6 +434,7 @@ bool Display::render()
     drawUs += pushStartUs - popupStartUs;
     push();
     pushUs = micros() - pushStartUs;
+    frameAccum.pushedPercent += panel->lastPushPercent();
     lastDrawMs = now;
   }
 
@@ -444,6 +470,7 @@ void Display::accumulateFrame(bool drew, uint32_t drawUs, uint32_t pushUs, uint3
   s.renders = static_cast<uint16_t>(a.renders * 1000UL / elapsedMs);
   s.avgDrawUs = a.frames ? a.drawUs / a.frames : 0;
   s.avgPushUs = a.frames ? a.pushUs / a.frames : 0;
+  s.avgPushedPercent = static_cast<uint8_t>(a.frames ? a.pushedPercent / a.frames : 0);
   s.maxFrameUs = a.maxFrameUs;
   s.avgUpdateUs = a.updateUs / a.renders;
   s.loadPercent = static_cast<uint8_t>(min<uint64_t>(100, a.renderUs / 10 / elapsedMs));

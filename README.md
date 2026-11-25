@@ -125,6 +125,21 @@ void loop() { display.render(); touchDisplay.render(); }  // one task
 `ILI9341DisplayDriver` takes `buffered = true` to draw into a PSRAM frame and
 push it in one burst. The esp32-remote `Dual Screen` project is a full example.
 
+## Performance
+
+Buffered drivers (TFT_eSPI sprite, ILI9341 canvas) push only what changed:
+`FrameDiff` hashes each row in 40 px cells against what the panel shows and
+sends changed cells per two-row band, each band only as wide as its changes.
+A static screen pushes nothing; a ticking clock pushes a few cells. Turn it off
+with `driver.setPartialPush(false)` before `begin`. A custom driver can use
+`FrameDiff` the same way (see oled 3's AMOLED driver in esp32-remote).
+
+A screen whose `draw()` starts with `display.clearScreen()` skips the
+library's own pre-clear from its second frame on, saving one full-frame fill.
+
+`display.stats()` reports fps, draw and push time, the share of each frame
+pushed, and load for the last second.
+
 ## Rendering
 
 `display.render()` runs one frame: input, the screen's `update`, and a redraw

@@ -28,6 +28,8 @@ public:
    */
   virtual bool buffered() const { return true; }
   virtual void push() {}
+  /** Share of the frame the last push() sent, 0-100. Partial-push drivers report less. */
+  virtual uint8_t lastPushPercent() const { return 100; }
 
   virtual void drawPixel(int32_t x, int32_t y, uint16_t color) = 0;
   virtual void fillRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t color) = 0;

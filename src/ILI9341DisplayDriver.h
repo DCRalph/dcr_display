@@ -7,6 +7,7 @@
 #include <SPI.h>
 
 #include "DisplayDriver.h"
+#include "FrameDiff.h"
 
 // SPI ILI9341 through Adafruit_GFX. With `buffered`, frames go to a 16-bit canvas
 // (150 KB at 320x240, PSRAM) pushed in one burst; without, or if that allocation
@@ -29,6 +30,9 @@ public:
   uint16_t height() const override;
   bool buffered() const override { return canvas != nullptr; }
   void push() override;
+  uint8_t lastPushPercent() const override { return pushedPercent; }
+  /** Buffered only; call before begin(). On by default: only changed regions are sent. */
+  void setPartialPush(bool on) { partialPush = on; }
 
   void drawPixel(int32_t x, int32_t y, uint16_t color) override;
   void fillRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t color) override;
@@ -54,6 +58,9 @@ private:
   Adafruit_ILI9341 panel;
   GFXcanvas16 *canvas = nullptr;
   bool wantBuffer;
+  bool partialPush = true;
+  uint8_t pushedPercent = 100;
+  FrameDiff diff;
   Pins pins;
   uint8_t rotation;
   uint32_t spiFrequency;

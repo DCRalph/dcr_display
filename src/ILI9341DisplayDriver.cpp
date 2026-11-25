@@ -33,14 +33,32 @@ bool ILI9341DisplayDriver::begin()
       canvas = nullptr;
       debugW("No memory for a frame buffer; drawing direct to the panel");
     }
+    else if (partialPush && !diff.begin(canvas->width(), canvas->height()))
+      debugW("No memory for change tracking; pushing whole frames");
   }
   return true;
 }
 
 void ILI9341DisplayDriver::push()
 {
-  if (canvas)
-    panel.drawRGBBitmap(0, 0, canvas->getBuffer(), canvas->width(), canvas->height());
+  if (!canvas)
+    return;
+  uint16_t *buffer = canvas->getBuffer();
+  if (!diff.active())
+  {
+    panel.drawRGBBitmap(0, 0, buffer, canvas->width(), canvas->height());
+    pushedPercent = 100;
+    return;
+  }
+
+  const int16_t stride = canvas->width();
+  panel.startWrite();
+  pushedPercent = diff.diff(buffer, [&](const FrameDiff::Region &r)
+                            {
+                              panel.setAddrWindow(r.x, r.y, r.w, r.h);
+                              for (int16_t row = 0; row < r.h; row++)
+                                panel.writePixels(buffer + static_cast<size_t>(r.y + row) * stride + r.x, r.w); });
+  panel.endWrite();
 }
 
 uint16_t ILI9341DisplayDriver::width() const
