@@ -122,6 +122,12 @@ public:
 
   /** Redraw on the next `render`. */
   void invalidate() { dirty = true; }
+
+  /** Tweens animate when on (the default) and the panel is buffered; off, they jump. */
+  void setAnimations(bool on) { animations = on; }
+  bool animationsEnabled() const { return animations && panel && panel->buffered(); }
+  /** Redraw every frame for the next `ms`; Tween::start calls this. */
+  void animateFor(uint32_t ms);
   /**
    * Default for screens with `redrawMs == -1`. 0 (the default on buffered panels)
    * redraws every frame; unbuffered panels default to 1000.
@@ -148,6 +154,7 @@ private:
   TopBarRenderer topBarRenderer = nullptr;
   BatteryProvider batteryProvider = nullptr;
   char batteryText[8] = {0};
+  int batteryPercent = 0;
   uint32_t batteryReadMs = 0; // the provider is read once a second, not every frame
 
   // Pre-clear skipping: a screen that filled the frame last time is not cleared first.
@@ -162,6 +169,8 @@ private:
 
   bool showTopBar = true;
   bool dirty = true;
+  bool animations = true;
+  uint32_t animateUntilMs = 0;
   uint32_t idleRedrawMs = 0;
   uint32_t lastDrawMs = 0;
 

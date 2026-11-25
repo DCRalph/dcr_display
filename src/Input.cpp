@@ -68,6 +68,14 @@ bool Inputs::hasPointer()
   return false;
 }
 
+bool Inputs::hasKeys()
+{
+  for (InputSource *src : set().sources)
+    if (!src->isPointer())
+      return true;
+  return false;
+}
+
 uint32_t Inputs::lastEventMs()
 {
   return set().lastEventMs;

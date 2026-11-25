@@ -6,6 +6,7 @@
 #include <type_traits>
 #include <vector>
 
+#include "Animation.h"
 #include "Display.h"
 #include "MenuMetrics.h"
 #include "Input.h"
@@ -90,12 +91,18 @@ public:
   virtual void adjust(int steps) {}
   virtual void stopEditing() {}
 
+  /** Draws the row's content; the menu draws the highlight under it. `active`: highlight is under it. */
   virtual void draw(int16_t x, int16_t y, bool active);
+  /** Right-hand side of the row: by default valueText(), with chevrons while editing. */
+  virtual void drawTrailing(int16_t right, int16_t midY, int16_t rowH, bool active);
+  /** A chevron before the name (Back) or after it (navigation). */
+  virtual bool leadingChevron() const { return false; }
+  virtual bool trailingChevron() const { return false; }
 
   std::vector<ActionFunction> functions;
 
 protected:
-  /** Standard row: highlight, name left, valueText() right, -/+ targets when editing by touch. */
+  /** Standard row: name left, trailing content right, -/+ targets when editing by touch. */
   void drawRow(int16_t x, int16_t y, bool active);
   MenuSize size() const;
 
@@ -121,12 +128,14 @@ class MenuItemNavigate : public MenuItem
 public:
   MenuItemNavigate(String name, const Screen2 *target);
   void addRoute(int8_t clicksToRun, const Screen2 *target);
+  bool trailingChevron() const override { return true; }
 };
 
 class MenuItemBack : public MenuItem
 {
 public:
   MenuItemBack();
+  bool leadingChevron() const override { return true; }
 };
 
 class MenuItemToggle : public MenuItem
@@ -139,11 +148,16 @@ public:
   void set(bool v);
   bool get() const { return *value; }
   String valueText() const override { return *value ? "ON" : "OFF"; }
+  /** A switch whose knob slides when the value changes. */
+  void drawTrailing(int16_t right, int16_t midY, int16_t rowH, bool active) override;
 
 private:
   bool *value;
   bool isMutable;
   std::function<void()> onChange;
+  Tween knob;
+  bool shown = false;
+  bool lastValue = false;
 };
 
 class MenuItemString : public MenuItem
@@ -265,7 +279,7 @@ class MenuItemSubmenu : public MenuItem
 public:
   MenuItemSubmenu(String name, Menu *submenu);
   void run(int clicks = 1, int rawClicks = 1) override;
-  String valueText() const override { return ">"; }
+  bool trailingChevron() const override { return true; }
 
 private:
   Menu *submenu;
@@ -339,6 +353,7 @@ private:
   void moveBy(int steps);
   void ensureActiveVisible();
   void layoutPage(const std::vector<uint16_t> &visible, uint8_t rows);
+  int slotAt(int16_t y) const; // visible-list index under y, or -1
 
   uint16_t active = 0;
   uint16_t topVisible = 0; // index into the visible-item list
@@ -347,4 +362,8 @@ private:
   Menu *activeSubmenu = nullptr;
   Menu *parentMenu = nullptr;
   int16_t dragAccum = 0;
+
+  // Motion: the list scroll and the highlight, both in px from the first row.
+  Tween scrollY, highlightY;
+  int laidOutRowH = 0;
 };

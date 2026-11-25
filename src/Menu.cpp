@@ -1,5 +1,6 @@
 #include "Menu.h"
 
+#include "Draw.h"
 #include "ScreenManager.h"
 
 namespace MenuStyle
@@ -134,49 +135,96 @@ void MenuItem::draw(int16_t x, int16_t y, bool active)
 
 void MenuItem::drawRow(int16_t x, int16_t y, bool active)
 {
-  const Theme &t = Display::active().theme();
+  Display &d = Display::active();
+  const Theme &t = d.theme();
   const MenuStyle::DrawStyle style = MenuStyle::drawStyle(size());
-  const int16_t w = static_cast<int16_t>(Display::active().width()) - 4;
   const int16_t h = static_cast<int16_t>(style.lineHeight);
-  const bool editing = active && isEditing();
+  const int16_t pad = t.oneBit ? 3 : 12;
+  const int16_t right = static_cast<int16_t>(d.width()) - (t.oneBit ? 6 : 16);
+  const int16_t midY = y + h / 2;
 
-  const uint16_t text = resolve(textColor, t.text);
-  uint16_t ink = text;
-  if (editing)
-    Display::active().drawRoundRect(x, y, w, h, style.radius, text);
-  else if (active)
+  uint16_t ink = active ? resolve(activeTextColor, t.highlightText) : resolve(textColor, t.text);
+  if (active && isEditing())
+    ink = resolve(textColor, t.text); // editing draws an outline, not a fill
+
+  d.setTextRole(style.role);
+  d.setTextColor(ink);
+  d.setTextDatum(Datum::MiddleLeft);
+  int16_t nameX = x + pad;
+  if (leadingChevron())
   {
-    Display::active().fillRoundRect(x, y, w, h, style.radius, resolve(bgColor, t.highlight));
-    ink = resolve(activeTextColor, t.highlightText);
+    const int16_t size = max<int16_t>(4, h / 3);
+    Draw::chevron(nameX, midY, size, false, ink);
+    nameX += size / 2 + (t.oneBit ? 4 : 8);
+  }
+  d.drawString(getName(), nameX, midY);
+
+  drawTrailing(right, midY, h, active);
+}
+
+void MenuItem::drawTrailing(int16_t right, int16_t midY, int16_t rowH, bool active)
+{
+  Display &d = Display::active();
+  const Theme &t = d.theme();
+  const bool editing = active && isEditing();
+  const uint16_t muted = active && !editing ? resolve(activeTextColor, t.highlightText) : t.mutedText;
+
+  if (trailingChevron())
+  {
+    Draw::chevron(right, midY, max<int16_t>(4, rowH / 3), true, muted);
+    right -= rowH / 3 + 6;
   }
 
-  Display::active().setTextRole(style.role);
-  Display::active().setTextColor(ink);
-  Display::active().setTextDatum(Datum::MiddleLeft);
-  const int16_t midY = y + h / 2;
-  Display::active().drawString(name, x + 2, midY);
-
-  int16_t valueRight = x + w - 2;
   if (editing && Inputs::hasPointer())
   {
     Rect minus, plus;
-    MenuStyle::editTargets(y, h, minus, plus);
-    Display::active().setTextDatum(Datum::MiddleCenter);
-    Display::active().drawRect(minus.x, minus.y + 1, minus.w, minus.h - 2, text);
-    Display::active().drawRect(plus.x, plus.y + 1, plus.w, plus.h - 2, text);
-    Display::active().drawString("-", minus.x + minus.w / 2, midY);
-    Display::active().drawString("+", plus.x + plus.w / 2, midY);
-    valueRight = minus.x - 4;
+    MenuStyle::editTargets(midY - rowH / 2, rowH, minus, plus);
+    for (const Rect &r : {minus, plus})
+    {
+      d.fillRoundRect(r.x + 2, r.y + 3, r.w - 4, r.h - 6, Draw::radius(r.h - 6), t.surface);
+      d.drawRoundRect(r.x + 2, r.y + 3, r.w - 4, r.h - 6, Draw::radius(r.h - 6), t.accent);
+    }
+    d.setTextColor(t.text);
+    d.setTextDatum(Datum::MiddleCenter);
+    d.drawString("-", minus.x + minus.w / 2, midY);
+    d.drawString("+", plus.x + plus.w / 2, midY);
+    right = minus.x - 6;
   }
 
   const String value = valueText();
-  if (value.length())
+  if (!value.length())
+    return;
+
+  d.setTextDatum(Datum::MiddleRight);
+  if (editing)
   {
-    Display::active().setTextDatum(Datum::MiddleRight);
-    Display::active().drawString(value, valueRight, midY);
+    // < value > in the accent while it is being changed.
+    const int16_t size = max<int16_t>(4, rowH / 3);
+    Draw::chevron(right, midY, size, true, t.accent);
+    right -= size / 2 + 4;
+    d.setTextColor(t.accent);
+    d.drawString(value, right, midY);
+    right -= d.textWidth(value) + 4;
+    Draw::chevron(right - size / 2, midY, size, false, t.accent);
+    return;
   }
+  d.setTextColor(muted);
+  d.drawString(value, right, midY);
 }
 
+void MenuItemToggle::drawTrailing(int16_t right, int16_t midY, int16_t rowH, bool active)
+{
+  if (!shown || *value != lastValue)
+  {
+    shown ? knob.start(*value ? 1.0f : 0.0f, 160) : knob.snap(*value ? 1.0f : 0.0f);
+    shown = true;
+    lastValue = *value;
+  }
+  const bool mono = Display::active().theme().oneBit;
+  const int16_t sh = max<int16_t>(6, min<int16_t>(rowH - (mono ? 4 : 10), 22));
+  const int16_t sw = sh * 9 / 5;
+  Draw::switchGlyph(right - sw, midY - sh / 2, sw, sh, knob.value(), active);
+}
 MenuItemAction::MenuItemAction(String name, int8_t clicksToRun, std::function<void()> func) : MenuItem(std::move(name))
 {
   type = MenuItemType::Action;
@@ -448,6 +496,30 @@ void Menu::handle(const InputEvent &e)
   case InputKind::Tap:
     tap(e.x, e.y);
     break;
+  case InputKind::Swipe:
+    if (!editing && e.value == static_cast<int16_t>(SwipeDir::Right))
+      back();
+    break;
+  case InputKind::LongPress:
+  {
+    // A long press is the touch version of a long click: run the -1 action.
+    const int slot = slotAt(e.y);
+    std::vector<uint16_t> visible;
+    for (size_t i = 0; i < items.size(); i++)
+      if (!items[i]->isHidden())
+        visible.push_back(static_cast<uint16_t>(i));
+    if (!editing && slot >= 0 && slot < static_cast<int>(visible.size()))
+    {
+      active = visible[slot];
+      items[active]->run(-1, -1);
+    }
+    break;
+  }
+  case InputKind::PointerUp:
+    // A flick keeps scrolling: about 200 ms of travel at release speed.
+    if (!editing && rowH > 0 && abs(e.value) > 40)
+      moveBy(constrain(-e.value * 2 / rowH, -12, 12));
+    break;
   case InputKind::PointerDown:
     dragAccum = 0;
     break;
@@ -529,6 +601,15 @@ void Menu::layoutPage(const std::vector<uint16_t> &visible, uint8_t rows)
     topVisible = static_cast<uint16_t>(maxTop);
 }
 
+int Menu::slotAt(int16_t y) const
+{
+  const int rowH = MenuStyle::lineHeight(menuSize);
+  const int top = MenuStyle::contentTopY();
+  if (y < top || rowH <= 0)
+    return -1;
+  return static_cast<int>((y - top + scrollY.value()) / rowH);
+}
+
 void Menu::draw()
 {
   if (activeSubmenu)
@@ -540,30 +621,72 @@ void Menu::draw()
   ensureActiveVisible();
   std::vector<uint16_t> visible;
   visible.reserve(items.size());
+  size_t activeSlot = 0;
   for (size_t i = 0; i < items.size(); i++)
-    if (!items[i]->isHidden())
-      visible.push_back(static_cast<uint16_t>(i));
+  {
+    if (items[i]->isHidden())
+      continue;
+    if (i == active)
+      activeSlot = visible.size();
+    visible.push_back(static_cast<uint16_t>(i));
+  }
   if (visible.empty())
     return;
 
+  Display &d = Display::active();
+  const Theme &t = d.theme();
   const uint8_t rows = getItemsPerPage();
   layoutPage(visible, rows);
 
-  const int rowH = MenuStyle::lineHeight(menuSize);
+  const MenuStyle::DrawStyle style = MenuStyle::drawStyle(menuSize);
+  const int rowH = style.lineHeight;
   const int top = MenuStyle::contentTopY();
-  for (uint8_t r = 0; r < rows && topVisible + r < visible.size(); r++)
+  const float scrollTarget = static_cast<float>(topVisible * rowH);
+  const float highlightTarget = static_cast<float>(activeSlot * rowH);
+  if (laidOutRowH != rowH)
   {
-    const uint16_t idx = visible[topVisible + r];
-    items[idx]->draw(0, static_cast<int16_t>(top + r * rowH), idx == active);
+    // First draw, or rows changed size: place everything without animating.
+    scrollY.snap(scrollTarget);
+    highlightY.snap(highlightTarget);
+    laidOutRowH = rowH;
+  }
+  if (scrollY.target() != scrollTarget)
+    scrollY.start(scrollTarget, 160);
+  if (highlightY.target() != highlightTarget)
+    highlightY.start(highlightTarget, 130);
+
+  const float scroll = scrollY.value();
+  const int16_t inset = t.oneBit ? 0 : 4;
+  const int16_t barRight = visible.size() > rows ? 5 : 0;
+  const int16_t hlW = static_cast<int16_t>(d.width()) - 2 * inset - barRight;
+  const int16_t hlY = static_cast<int16_t>(top + highlightY.value() - scroll);
+  MenuItem *current = items[active];
+  if (current->isEditing())
+  {
+    if (!t.oneBit)
+      d.fillRoundRect(inset, hlY, hlW, rowH, style.radius + 4, t.surface);
+    d.drawRoundRect(inset, hlY, hlW, rowH, t.oneBit ? style.radius : style.radius + 4, t.accent);
+  }
+  else
+    d.fillRoundRect(inset, hlY, hlW, rowH, t.oneBit ? style.radius : style.radius + 4,
+                    resolve(current->bgColor, t.highlight));
+
+  // Rows whose slot the scroll position touches, partial ones included.
+  const int first = max(0, static_cast<int>(scroll) / rowH);
+  const int last = min<int>(visible.size() - 1, (static_cast<int>(scroll) + rows * rowH) / rowH);
+  for (int slot = first; slot <= last; slot++)
+  {
+    const int16_t y = static_cast<int16_t>(top + slot * rowH - scroll);
+    const bool underHighlight = abs(y - hlY) < rowH / 2;
+    items[visible[slot]]->draw(0, y, underHighlight);
   }
 
-  if (visible.size() > rows)
+  if (barRight)
   {
-    const int w = Display::active().width();
-    const int trackH = Display::active().height() - top;
-    const int thumbH = max(3, trackH * rows / static_cast<int>(visible.size()));
-    const int thumbY = top + (trackH - thumbH) * topVisible / static_cast<int>(visible.size() - rows);
-    Display::active().drawLine(w - 2, top, w - 2, Display::active().height() - 1, Display::active().theme().text);
-    Display::active().fillRect(w - 3, thumbY, 3, thumbH, Display::active().theme().text);
+    const int trackH = d.height() - top - 4;
+    const int thumbH = max(6, trackH * rows / static_cast<int>(visible.size()));
+    const float maxScroll = static_cast<float>((visible.size() - rows) * rowH);
+    const int thumbY = top + 2 + static_cast<int>((trackH - thumbH) * min(1.0f, scroll / maxScroll));
+    d.fillRoundRect(d.width() - 4, thumbY, 3, thumbH, 1, t.oneBit ? t.text : t.mutedText);
   }
 }

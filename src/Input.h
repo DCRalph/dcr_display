@@ -17,7 +17,18 @@ enum class InputKind : uint8_t
   Tap,         // x, y = where a pointer pressed and released without moving
   PointerDown, // x, y
   PointerMove, // x, y; value = dy since the previous pointer event
-  PointerUp,   // x, y
+  PointerUp,   // x, y; value = vertical release speed, px per 100 ms (for flings)
+  Swipe,       // x, y = start; value = SwipeDir
+  LongPress,   // x, y; the press then ends without a Tap
+  DoubleTap,   // x, y; follows the second Tap
+};
+
+enum class SwipeDir : int16_t
+{
+  Left,
+  Right,
+  Up,
+  Down,
 };
 
 struct InputEvent
@@ -92,5 +103,7 @@ namespace Inputs
   void inject(const InputEvent &event);
 
   bool hasPointer();
+  /** True if a non-pointer source (buttons, encoder, joystick) is attached: focus is worth showing. */
+  bool hasKeys();
   uint32_t lastEventMs();
 }

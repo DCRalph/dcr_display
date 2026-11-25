@@ -1,22 +1,52 @@
 #include "Widgets.h"
 
+#include <algorithm>
+
 #include "Display.h"
+#include "Draw.h"
 
-void Button::draw(bool focused) const
+void Button::draw(bool focused, bool pressed) const
 {
-  const Theme &t = Display::active().theme();
-  const DisplayProfile &p = Display::active().profile();
-  const uint16_t fill = focused ? t.focus : t.widget;
-  const uint16_t ink = focused ? t.focusText : (enabled ? t.widgetText : t.mutedText);
-  const int32_t r = p.popupRadius / 2;
+  Display &d = Display::active();
+  const Theme &t = d.theme();
+  const int16_t r = Draw::radius(bounds.h);
+  uint16_t fill = t.surface, ink = t.widgetText, outline = t.border;
 
-  Display::active().fillRoundRect(bounds.x, bounds.y, bounds.w, bounds.h, r, fill);
-  Display::active().drawRoundRect(bounds.x, bounds.y, bounds.w, bounds.h, r, focused ? t.focusText : t.text);
+  if (t.oneBit)
+  {
+    // 1-bit: only focus fills; primary gets a double border instead.
+    fill = focused ? Color::White : Color::Black;
+    ink = focused ? Color::Black : Color::White;
+    outline = Color::White;
+  }
+  else if (style == Style::Primary)
+  {
+    fill = outline = t.accent;
+    ink = t.onAccent;
+  }
+  else if (style == Style::Ghost)
+  {
+    fill = outline = t.background;
+    ink = t.accent;
+  }
+  if (focused && !t.oneBit && style != Style::Primary)
+    outline = t.accent;
+  if (!enabled)
+    ink = t.mutedText;
+  if (pressed && !t.oneBit)
+    fill = Color::blend(fill, Color::Black, 70);
 
-  Display::active().setTextRole(bounds.h >= 28 ? TextRole::Body : TextRole::Small);
-  Display::active().setTextColor(ink);
-  Display::active().setTextDatum(Datum::MiddleCenter);
-  Display::active().drawString(label, bounds.x + bounds.w / 2, bounds.y + bounds.h / 2);
+  d.fillRoundRect(bounds.x, bounds.y, bounds.w, bounds.h, r, fill);
+  d.drawRoundRect(bounds.x, bounds.y, bounds.w, bounds.h, r, outline);
+  if (t.oneBit && style == Style::Primary && !focused)
+    d.drawRoundRect(bounds.x + 1, bounds.y + 1, bounds.w - 2, bounds.h - 2, max<int16_t>(0, r - 1), outline);
+  if (focused && !t.oneBit)
+    Draw::focusRing(bounds, r);
+
+  d.setTextRole(bounds.h >= 28 ? TextRole::Body : TextRole::Small);
+  d.setTextColor(ink);
+  d.setTextDatum(Datum::MiddleCenter);
+  d.drawString(label, bounds.x + bounds.w / 2, bounds.y + bounds.h / 2);
 }
 
 void Button::press() const
@@ -25,23 +55,126 @@ void Button::press() const
     onPress();
 }
 
+void Switch::draw(bool focused, bool pressed) const
+{
+  Display &d = Display::active();
+  const Theme &t = d.theme();
+  if (!shown || *value != lastValue)
+  {
+    if (shown)
+      knob.start(*value ? 1.0f : 0.0f, 160);
+    else
+      knob.snap(*value ? 1.0f : 0.0f);
+    shown = true;
+    lastValue = *value;
+  }
+
+  const int16_t r = Draw::radius(bounds.h);
+  if (focused || pressed)
+    d.fillRoundRect(bounds.x, bounds.y, bounds.w, bounds.h, r, t.oneBit ? Color::White : t.surface);
+  if (focused && !t.oneBit)
+    d.drawRoundRect(bounds.x, bounds.y, bounds.w, bounds.h, r, t.accent);
+
+  const int16_t sh = t.oneBit ? std::max<int16_t>(6, bounds.h - 4) : std::min<int16_t>(bounds.h - 6, 22);
+  const int16_t sw = sh * 9 / 5;
+  Draw::switchGlyph(bounds.x + bounds.w - sw - 6, bounds.y + (bounds.h - sh) / 2, sw, sh, knob.value(),
+                    focused && t.oneBit);
+
+  d.setTextRole(bounds.h >= 28 ? TextRole::Body : TextRole::Small);
+  d.setTextColor(focused && t.oneBit ? Color::Black : (enabled ? t.text : t.mutedText));
+  d.setTextDatum(Datum::MiddleLeft);
+  d.drawString(label, bounds.x + 8, bounds.y + bounds.h / 2);
+}
+
+void Switch::activate()
+{
+  if (!enabled)
+    return;
+  *value = !*value;
+  if (onChange)
+    onChange(*value);
+}
+
+Rect Slider::track() const
+{
+  const int16_t knob = std::min<int16_t>(14, bounds.h / 2);
+  return Rect{static_cast<int16_t>(bounds.x + knob / 2 + 4), static_cast<int16_t>(bounds.y + bounds.h - knob / 2 - 4),
+              static_cast<int16_t>(bounds.w - knob - 8), 4};
+}
+
+void Slider::draw(bool focused, bool pressed) const
+{
+  Display &d = Display::active();
+  const Theme &t = d.theme();
+  const int16_t r = Draw::radius(bounds.h);
+  if (editing && !t.oneBit)
+    d.fillRoundRect(bounds.x, bounds.y, bounds.w, bounds.h, r, t.surface);
+  if (focused)
+    d.drawRoundRect(bounds.x, bounds.y, bounds.w, bounds.h, r, t.oneBit ? Color::White : t.accent);
+
+  const TextRole role = bounds.h >= 40 ? TextRole::Body : TextRole::Small;
+  d.setTextRole(role);
+  d.setTextColor(enabled ? t.text : t.mutedText);
+  d.setTextDatum(Datum::TopLeft);
+  d.drawString(label, bounds.x + 8, bounds.y + 4);
+  d.setTextColor(editing ? t.accent : t.mutedText);
+  d.setTextDatum(Datum::TopRight);
+  d.drawString(String(*value) + suffix, bounds.x + bounds.w - 8, bounds.y + 4);
+
+  const Rect tr = track();
+  const int16_t fill = maxValue != minValue ? static_cast<int16_t>((int32_t)tr.w * (*value - minValue) / (maxValue - minValue)) : 0;
+  d.fillRoundRect(tr.x, tr.y, tr.w, tr.h, 2, t.border);
+  d.fillRoundRect(tr.x, tr.y, fill, tr.h, 2, t.accent);
+  const int16_t knob = std::min<int16_t>(t.oneBit ? 9 : 14, bounds.h / 2) + (pressed ? 2 : 0);
+  // 1-bit: a hollow knob, so it stands out from the filled track.
+  d.fillRoundRect(tr.x + fill - knob / 2, tr.y + tr.h / 2 - knob / 2, knob, knob, knob / 2,
+                  t.oneBit ? Color::Black : Color::White);
+  d.drawRoundRect(tr.x + fill - knob / 2, tr.y + tr.h / 2 - knob / 2, knob, knob, knob / 2,
+                  t.oneBit ? Color::White : t.accent);
+}
+
+void Slider::set(int v)
+{
+  v = constrain(v, minValue, maxValue);
+  if (v == *value)
+    return;
+  *value = v;
+  if (onChange)
+    onChange(v);
+}
+
+void Slider::adjust(int steps)
+{
+  set(*value + steps * step);
+}
+
+void Slider::drag(int16_t x, int16_t)
+{
+  const Rect tr = track();
+  if (tr.w <= 0)
+    return;
+  const int32_t raw = (int32_t)(x - tr.x) * (maxValue - minValue) / tr.w;
+  set(static_cast<int>(minValue + (raw + step / 2) / step * step));
+}
+
 void FocusGroup::clear()
 {
-  buttons.clear();
+  widgets.clear();
   focused = 0;
+  pressed = -1;
 }
 
 void FocusGroup::setFocus(size_t index)
 {
-  if (index < buttons.size())
+  if (index < widgets.size())
     focused = index;
 }
 
 void FocusGroup::move(int steps)
 {
-  if (buttons.empty())
+  if (widgets.empty())
     return;
-  const int n = static_cast<int>(buttons.size());
+  const int n = static_cast<int>(widgets.size());
   int next = static_cast<int>(focused) + steps;
   next = ((next % n) + n) % n;
   focused = static_cast<size_t>(next);
@@ -49,13 +182,13 @@ void FocusGroup::move(int steps)
 
 void FocusGroup::moveVertical(int steps)
 {
-  if (buttons.empty())
+  if (widgets.empty())
     return;
   // Column-major order: down the first column, then the next.
   std::vector<size_t> order;
-  order.reserve(buttons.size());
+  order.reserve(widgets.size());
   for (size_t col = 0; col < columns; col++)
-    for (size_t i = col; i < buttons.size(); i += columns)
+    for (size_t i = col; i < widgets.size(); i += columns)
       order.push_back(i);
 
   size_t pos = 0;
@@ -68,12 +201,40 @@ void FocusGroup::moveVertical(int steps)
 
 bool FocusGroup::update()
 {
-  if (buttons.empty())
+  if (widgets.empty())
     return false;
 
   bool consumed = false;
   for (const InputEvent &e : Inputs::events())
   {
+    Widget *w = current();
+    if (w->editing)
+    {
+      // Editing a slider: every navigation input changes it; select or back ends it.
+      switch (e.kind)
+      {
+      case InputKind::Delta:
+        w->adjust(e.value);
+        break;
+      case InputKind::Up:
+      case InputKind::Right:
+        w->adjust(1);
+        break;
+      case InputKind::Down:
+      case InputKind::Left:
+        w->adjust(-1);
+        break;
+      case InputKind::Select:
+      case InputKind::Back:
+        w->editing = false;
+        break;
+      default:
+        break;
+      }
+      consumed = true;
+      continue;
+    }
+
     switch (e.kind)
     {
     case InputKind::Delta:
@@ -92,16 +253,41 @@ bool FocusGroup::update()
       moveVertical(1);
       break;
     case InputKind::Select:
-      if (e.value == 1)
-        buttons[focused]->press();
+      if (e.value == 1 && w->enabled)
+      {
+        if (w->editable())
+          w->editing = true;
+        else
+          w->activate();
+      }
+      break;
+    case InputKind::PointerDown:
+      pressed = -1;
+      for (size_t i = 0; i < widgets.size(); i++)
+      {
+        if (widgets[i]->enabled && widgets[i]->bounds.contains(e.x, e.y))
+        {
+          pressed = static_cast<int>(i);
+          focused = i;
+          widgets[i]->drag(e.x, e.y);
+          break;
+        }
+      }
+      break;
+    case InputKind::PointerMove:
+      if (pressed >= 0)
+        widgets[pressed]->drag(e.x, e.y);
+      break;
+    case InputKind::PointerUp:
+      pressed = -1;
       break;
     case InputKind::Tap:
-      for (size_t i = 0; i < buttons.size(); i++)
+      for (size_t i = 0; i < widgets.size(); i++)
       {
-        if (buttons[i]->bounds.contains(e.x, e.y))
+        if (widgets[i]->enabled && widgets[i]->bounds.contains(e.x, e.y))
         {
           focused = i;
-          buttons[i]->press();
+          widgets[i]->activate();
           break;
         }
       }
@@ -116,8 +302,10 @@ bool FocusGroup::update()
 
 void FocusGroup::draw() const
 {
-  for (size_t i = 0; i < buttons.size(); i++)
-    buttons[i]->draw(i == focused);
+  // Touch-only displays have nothing to move focus with, so they show none.
+  const bool showFocus = Inputs::hasKeys();
+  for (size_t i = 0; i < widgets.size(); i++)
+    widgets[i]->draw(showFocus && i == focused, static_cast<int>(i) == pressed);
 }
 
 namespace
@@ -370,10 +558,12 @@ bool Keyboard::update()
 
 void Keyboard::draw()
 {
-  const Theme &t = Display::active().theme();
+  Display &d = Display::active();
+  const Theme &t = d.theme();
   const bool small = bounds.h / kRows < 14;
-  Display::active().setTextRole(small ? TextRole::Small : TextRole::Body);
-  Display::active().setTextDatum(Datum::MiddleCenter);
+  const int16_t gap = small ? 1 : 2;
+  d.setTextRole(small ? TextRole::Small : TextRole::Body);
+  d.setTextDatum(Datum::MiddleCenter);
 
   char buf[2];
   for (uint8_t row = 0; row < kRows; row++)
@@ -386,15 +576,29 @@ void Keyboard::draw()
       if (row < kRows - 1 && label[0] == '\0')
         continue;
 
-      const Rect r = keyRect(row, col);
-      const bool focused = row == focusRow && col == focusCol;
-      if (focused)
-        Display::active().fillRect(r.x, r.y, r.w, r.h, t.highlight);
-      else if (!small)
-        Display::active().drawRect(r.x, r.y, r.w, r.h, t.widget);
+      const Rect cell = keyRect(row, col);
+      const Rect r{static_cast<int16_t>(cell.x + gap), static_cast<int16_t>(cell.y + gap),
+                   static_cast<int16_t>(cell.w - 2 * gap), static_cast<int16_t>(cell.h - 2 * gap)};
+      const bool focused = row == focusRow && col == focusCol && Inputs::hasKeys();
+      const bool control = row == kRows - 1;
+      const int16_t radius = min<int16_t>(t.oneBit ? 2 : 5, r.h / 2);
 
-      Display::active().setTextColor(focused ? t.highlightText : t.text);
-      Display::active().drawString(label, r.x + r.w / 2, r.y + r.h / 2);
+      uint16_t ink = t.text;
+      if (focused)
+      {
+        d.fillRoundRect(r.x, r.y, r.w, r.h, radius, t.focus);
+        ink = t.focusText;
+      }
+      else if (t.oneBit)
+      {
+        if (!small)
+          d.drawRoundRect(r.x, r.y, r.w, r.h, radius, t.border);
+      }
+      else
+        d.fillRoundRect(r.x, r.y, r.w, r.h, radius, control ? t.border : t.surface);
+
+      d.setTextColor(ink);
+      d.drawString(label, r.x + r.w / 2, r.y + r.h / 2);
     }
   }
 }

@@ -51,24 +51,24 @@ constexpr TextRole roleForTextSize(uint8_t size) noexcept
 struct DisplayProfile
 {
   // --- Top bar ---
-  uint16_t topBarHeight = 20;
+  uint16_t topBarHeight = 24;
   /** Fill the bar with the screen's top bar colour. Mono panels underline instead. */
   bool topBarFilled = true;
   /** Drawn along the bottom edge of the bar when `topBarFilled` is false. */
   bool topBarUnderline = false;
-  uint16_t topBarPaddingX = 10;
+  uint16_t topBarPaddingX = 12;
   TextRole topBarTextRole = TextRole::Body;
 
   // --- Popups ---
   uint16_t popupMarginX = 30;
   uint16_t popupMarginY = 20;
   uint16_t popupPadding = 10;
-  uint8_t popupRadius = 10;
+  uint8_t popupRadius = 12;
   uint16_t popupLineGap = 3;
   TextRole popupTitleRole = TextRole::Title;
   TextRole popupMessageRole = TextRole::Body;
   /** Height of the AutoClosePopup countdown bar; 0 hides it. */
-  uint16_t popupProgressHeight = 10;
+  uint16_t popupProgressHeight = 6;
 
   /**
    * Defaults for a panel of this size. Three bands: small mono-style panels

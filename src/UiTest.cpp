@@ -13,6 +13,8 @@ namespace UiTest
   extern const Screen2 InputScreen;
   extern const Screen2 PopupsScreen;
   extern const Screen2 WidgetsScreen;
+  extern const Screen2 GesturesScreen;
+  extern const Screen2 AnimationScreen;
   extern const Screen2 KeyboardScreen;
   extern const Screen2 DrawingScreen;
   extern const Screen2 RedrawScreen;
@@ -50,7 +52,12 @@ namespace
   MenuItemNavigate rootItems("Menu items", &UiTest::MenuItemsScreen);
   MenuItemNavigate rootInput("Input events", &UiTest::InputScreen);
   MenuItemNavigate rootPopups("Popups", &UiTest::PopupsScreen);
-  MenuItemNavigate rootWidgets("Buttons", &UiTest::WidgetsScreen);
+  MenuItemNavigate rootWidgets("Components", &UiTest::WidgetsScreen);
+  MenuItemNavigate rootGestures("Gestures", &UiTest::GesturesScreen);
+  MenuItemNavigate rootAnimation("Animation", &UiTest::AnimationScreen);
+  MenuItemSelect rootTheme("Theme", {"Dark", "Light", "Mono"});
+  bool gMotion = true;
+  MenuItemToggle rootMotion("Motion", &gMotion);
   MenuItemNavigate rootKeyboard("Keyboard", &UiTest::KeyboardScreen);
   MenuItemNavigate rootDrawing("Drawing", &UiTest::DrawingScreen);
   MenuItemNavigate rootRedraw("Redraw", &UiTest::RedrawScreen);
@@ -60,11 +67,23 @@ namespace
   {
     if (rootMenu.items.empty())
     {
-      for (MenuItem *item : std::initializer_list<MenuItem *>{&rootBack, &rootPanelItem, &rootModesItem, &rootItems,
-                                                              &rootInput, &rootPopups, &rootWidgets, &rootKeyboard,
-                                                              &rootDrawing, &rootRedraw, &rootBackground})
+      for (MenuItem *item : std::initializer_list<MenuItem *>{
+               &rootBack, &rootPanelItem, &rootModesItem, &rootTheme, &rootMotion, &rootItems, &rootWidgets,
+               &rootGestures, &rootAnimation, &rootPopups, &rootKeyboard, &rootInput, &rootDrawing, &rootRedraw,
+               &rootBackground})
         rootMenu.addMenuItem(item);
+      // Applies to whichever display the menu is on. A 1-bit panel can only show the mono theme.
+      rootTheme.setOnChange([]()
+                            {
+                              Display &d = Display::active();
+                              const int i = d.colorDepth() == 1 ? 2 : rootTheme.getCurrentIndex();
+                              rootTheme.setCurrentIndex(i);
+                              d.setTheme(i == 1 ? Theme::light() : i == 2 ? Theme::mono() : Theme::dark()); });
+      rootMotion.setOnChange([]()
+                             { Display::active().setAnimations(gMotion); });
     }
+    rootTheme.setCurrentIndex(Display::active().theme().oneBit ? 2 : (Display::active().theme().background == Theme::light().background ? 1 : 0));
+    gMotion = Display::active().animationsEnabled();
     rootPanel = String(Display::active().width()) + "x" + Display::active().height() + " " + Display::active().colorDepth() + "b";
     rootModes = String(Display::active().driver()->buffered() ? "buf" : "direct") + (Inputs::hasPointer() ? " touch" : "");
   }
@@ -144,8 +163,8 @@ namespace
 
   const char *kindName(InputKind k)
   {
-    static const char *const names[] = {"Up", "Down", "Left", "Right", "Select", "Back",
-                                        "Delta", "Tap", "PDown", "PMove", "PUp"};
+    static const char *const names[] = {"Up", "Down", "Left", "Right", "Select", "Back", "Delta",
+                                        "Tap", "PDown", "PMove", "PUp", "Swipe", "Long", "DblTap"};
     const size_t i = static_cast<size_t>(k);
     return i < sizeof(names) / sizeof(names[0]) ? names[i] : "?";
   }
@@ -240,62 +259,238 @@ namespace
       popupsMenu.addMenuItem(item);
   }
 
-  // ---------------------------------------------------------------- buttons
-  int gCount = 0;
-  String gPressed = "-";
-  Button buttons[] = {
-      Button("A", []()
-             { gPressed = "A"; }),
-      Button("B", []()
-             { gPressed = "B"; }),
-      Button("C", []()
-             { gPressed = "C"; }),
-      Button("-", []()
-             { gCount--; }),
-      Button("+", []()
-             { gCount++; }),
-      Button("Back", []()
-             { Display::active().screens().back(); }),
-  };
-  FocusGroup buttonGroup;
-  bool gButtonsBuilt = false;
+  // ---------------------------------------------------------------- components
+  bool gWifi = true, gSound = false;
+  int gLevel = 60;
+  String gLastAction = "-";
+  Button saveButton("Save", []()
+                    { gLastAction = "Saved"; }, Button::Style::Primary);
+  Button cancelButton("Cancel", []()
+                      { gLastAction = "Cancelled"; });
+  Button moreButton("More", []()
+                    { gLastAction = "More"; }, Button::Style::Ghost);
+  Button componentsBack("Back", []()
+                        { Display::active().screens().back(); });
+  Switch wifiSwitch("Wi-Fi", &gWifi, [](bool on)
+                    { gLastAction = on ? "Wi-Fi on" : "Wi-Fi off"; });
+  Switch soundSwitch("Sounds", &gSound, [](bool on)
+                     { gLastAction = on ? "Sounds on" : "Sounds off"; });
+  Slider levelSlider("Level", &gLevel, 0, 100, 5);
+  FocusGroup components;
 
-  void widgetsEnter()
+  // Lays the widgets out for the panel: everything on a big one, the essentials on 128x64.
+  void componentsEnter()
   {
-    if (!gButtonsBuilt)
+    Display &d = Display::active();
+    components.clear();
+    levelSlider.suffix = "%";
+    const int16_t W = d.width(), gap = d.height() < 100 ? 2 : 6;
+    int16_t y = top() + gap;
+    auto place = [&](Widget &w, int16_t x, int16_t width, int16_t h)
     {
-      gButtonsBuilt = true;
-      for (Button &b : buttons)
-        buttonGroup.add(b);
-      buttonGroup.setColumns(3);
+      w.bounds = Rect{x, y, width, h};
+      components.add(w);
+    };
+
+    if (d.height() < 100)
+    {
+      const int16_t half = (W - 3 * gap) / 2;
+      place(saveButton, gap, half, 12);
+      place(componentsBack, gap * 2 + half, half, 12);
+      y += 12 + gap;
+      place(wifiSwitch, 0, W, 12);
+      y += 12 + gap;
+      place(levelSlider, 0, W, d.height() - y);
+      return;
     }
-    Display::active().setTextRole(TextRole::Small);
-    const int16_t y0 = top() + Display::active().fontHeight() + 4;
-    const int16_t gap = 3;
-    const int16_t w = (Display::active().width() - 4 * gap) / 3;
-    const int16_t h = (Display::active().height() - y0 - 3 * gap) / 2;
-    for (int i = 0; i < 6; i++)
-      buttons[i].bounds = Rect{static_cast<int16_t>(gap + (i % 3) * (w + gap)),
-                               static_cast<int16_t>(y0 + gap + (i / 3) * (h + gap)), w, h};
+
+    const int16_t bh = d.height() >= 200 ? 36 : 30;
+    const int16_t quarter = (W - 5 * gap) / 4;
+    place(saveButton, gap, quarter, bh);
+    place(cancelButton, gap * 2 + quarter, quarter, bh);
+    place(moreButton, gap * 3 + quarter * 2, quarter, bh);
+    place(componentsBack, gap * 4 + quarter * 3, quarter, bh);
+    y += bh + gap;
+    const int16_t half = (W - 3 * gap) / 2;
+    place(wifiSwitch, gap, half, bh);
+    place(soundSwitch, gap * 2 + half, half, bh);
+    y += bh + gap;
+    place(levelSlider, gap, W - 2 * gap, min<int16_t>(52, d.height() - y - 14));
   }
 
-  void widgetsDraw()
+  void componentsDraw()
   {
-    drawLine("Count " + String(gCount) + "  Last " + gPressed, top() + 1);
-    buttonGroup.draw();
+    components.draw();
+    Display &d = Display::active();
+    if (d.height() >= 100)
+      drawLine(gLastAction, d.height() - 11);
   }
 
-  void widgetsUpdate()
+  void componentsUpdate()
   {
     for (const InputEvent &e : Inputs::events())
     {
-      if (e.kind == InputKind::Back)
+      if (e.kind == InputKind::Back || (e.kind == InputKind::Select && e.rawClicks == 3))
       {
         Display::active().screens().back();
         return;
       }
     }
-    buttonGroup.update();
+    components.update();
+  }
+
+  // ---------------------------------------------------------------- gestures
+  String gGesture;
+  int16_t gGestureX = 0, gGestureY = 0;
+  SwipeDir gSwipeDir = SwipeDir::Left;
+  bool gGestureIsSwipe = false;
+  Tween gRipple;
+  Button gesturesBack("Back", []()
+                      { Display::active().screens().back(); });
+  FocusGroup gesturesGroup;
+
+  void gesturesEnter()
+  {
+    gGesture = Inputs::hasPointer() ? "Tap, swipe, hold or double tap" : "Needs a touch screen";
+    gGestureX = gGestureY = -1;
+    gesturesGroup.clear();
+    Display &d = Display::active();
+    gesturesBack.bounds = Rect{4, static_cast<int16_t>(d.height() - (d.height() < 100 ? 13 : 34)),
+                               static_cast<int16_t>(d.height() < 100 ? 36 : 80),
+                               static_cast<int16_t>(d.height() < 100 ? 12 : 30)};
+    gesturesGroup.add(gesturesBack);
+  }
+
+  void gesturesDraw()
+  {
+    Display &d = Display::active();
+    const Theme &t = d.theme();
+    const int16_t cy = top() + (d.height() - top()) / 2 - 8;
+    d.setTextRole(d.height() < 100 ? TextRole::Small : TextRole::Title);
+    d.setTextColor(t.text);
+    d.setTextDatum(Datum::MiddleCenter);
+    d.drawString(gGesture, d.width() / 2, cy);
+
+    if (gGestureX >= 0)
+    {
+      const float p = gRipple.value(); // 0 -> 1 over the ripple
+      if (gGestureIsSwipe)
+      {
+        const int16_t len = static_cast<int16_t>(60 * p);
+        const int16_t dx = gSwipeDir == SwipeDir::Left ? -len : gSwipeDir == SwipeDir::Right ? len : 0;
+        const int16_t dy = gSwipeDir == SwipeDir::Up ? -len : gSwipeDir == SwipeDir::Down ? len : 0;
+        for (int16_t o = -1; o <= 1; o++)
+          d.drawLine(gGestureX + (dy ? o : 0), gGestureY + (dx ? o : 0), gGestureX + dx + (dy ? o : 0),
+                     gGestureY + dy + (dx ? o : 0), t.accent);
+        d.fillRoundRect(gGestureX + dx - 4, gGestureY + dy - 4, 8, 8, 4, t.accent);
+      }
+      else if (p < 1)
+      {
+        const int16_t r = static_cast<int16_t>(6 + 34 * p);
+        d.drawSmoothArc(gGestureX, gGestureY, r, max<int16_t>(0, r - 3), 0, 0, t.accent, t.background, false);
+      }
+    }
+    gesturesGroup.draw();
+  }
+
+  void gesturesUpdate()
+  {
+    for (const InputEvent &e : Inputs::events())
+    {
+      if (e.kind == InputKind::Back || e.kind == InputKind::Left || (e.kind == InputKind::Select && e.rawClicks == 3))
+      {
+        Display::active().screens().back();
+        return;
+      }
+      if (gesturesBack.bounds.contains(e.x, e.y) && e.kind >= InputKind::Tap)
+        continue; // the Back button's own press
+      const char *name = nullptr;
+      switch (e.kind)
+      {
+      case InputKind::Tap:
+        name = "Tap";
+        break;
+      case InputKind::DoubleTap:
+        name = "Double tap";
+        break;
+      case InputKind::LongPress:
+        name = "Long press";
+        break;
+      case InputKind::Swipe:
+      {
+        static const char *const dirs[] = {"Swipe left", "Swipe right", "Swipe up", "Swipe down"};
+        name = dirs[e.value & 3];
+        gSwipeDir = static_cast<SwipeDir>(e.value);
+        break;
+      }
+      default:
+        break;
+      }
+      if (!name)
+        continue;
+      gGesture = name;
+      gGestureX = e.x;
+      gGestureY = e.y;
+      gGestureIsSwipe = e.kind == InputKind::Swipe;
+      gRipple.start(0.0f, 1.0f, gGestureIsSwipe ? 260 : 420, Ease::outCubic);
+    }
+    gesturesGroup.update();
+  }
+
+  // ---------------------------------------------------------------- animation
+  struct Lane
+  {
+    const char *name;
+    Ease::Fn ease;
+    Tween t;
+  };
+  Lane lanes[] = {{"linear", Ease::linear, {}},
+                  {"outQuad", Ease::outQuad, {}},
+                  {"outCubic", Ease::outCubic, {}},
+                  {"inOutCubic", Ease::inOutCubic, {}},
+                  {"outBack", Ease::outBack, {}}};
+  Tween gBar;
+
+  void animationEnter()
+  {
+    for (Lane &l : lanes)
+      l.t.snap(0);
+    gBar.snap(0);
+  }
+
+  void animationDraw()
+  {
+    Display &d = Display::active();
+    const Theme &t = d.theme();
+    const bool small = d.height() < 100;
+    const int16_t lanes_n = small ? 3 : 5;
+    const int16_t labelW = small ? 0 : 92;
+    const int16_t barH = small ? 6 : 10;
+    const int16_t laneH = (d.height() - top() - barH - 8) / lanes_n;
+    const int16_t ball = min<int16_t>(laneH - 4, small ? 8 : 14);
+    const int16_t x0 = labelW + 4, span = d.width() - x0 - ball - 6;
+
+    for (int16_t i = 0; i < lanes_n; i++)
+    {
+      Lane &l = lanes[small ? i * 2 : i];
+      // Ping-pong: each lane heads back once it arrives.
+      if (!l.t.running())
+        l.t.start(l.t.value() < 0.5f ? 1.0f : 0.0f, 1200, l.ease);
+      const int16_t y = top() + 2 + i * laneH;
+      if (!small)
+        drawLine(l.name, y + (laneH - 8) / 2);
+      d.drawLine(x0, y + laneH / 2, x0 + span + ball, y + laneH / 2, t.border);
+      d.fillRoundRect(x0 + static_cast<int16_t>(span * l.t.value()), y + (laneH - ball) / 2, ball, ball, ball / 2,
+                      t.accent);
+    }
+
+    if (!gBar.running())
+      gBar.start(gBar.value() < 0.5f ? 1.0f : 0.0f, 1600, Ease::inOutCubic);
+    const int16_t by = d.height() - barH - 4;
+    const int16_t bw = d.width() - 8;
+    d.fillRoundRect(4, by, bw, barH, barH / 2, t.surface);
+    d.drawRoundRect(4, by, bw, barH, barH / 2, t.border);
+    d.fillRoundRect(4, by, max<int16_t>(barH, static_cast<int16_t>(bw * gBar.value())), barH, barH / 2, t.accent);
   }
 
   // ---------------------------------------------------------------- keyboard
@@ -494,7 +689,11 @@ namespace UiTest
                                           { popupsMenu.draw(); }, []()
                                           { popupsMenu.update(); }, popupsEnter);
 
-  const Screen2 WidgetsScreen = makeScreen("Buttons", widgetsDraw, widgetsUpdate, widgetsEnter);
+  const Screen2 WidgetsScreen = makeScreen("Components", componentsDraw, componentsUpdate, componentsEnter);
+
+  const Screen2 GesturesScreen = makeScreen("Gestures", gesturesDraw, gesturesUpdate, gesturesEnter);
+
+  const Screen2 AnimationScreen = makeScreen("Animation", animationDraw, exitOnInput, animationEnter);
 
   const Screen2 KeyboardScreen = makeScreen("Keyboard", keyboardDraw, keyboardUpdate, keyboardEnter);
 

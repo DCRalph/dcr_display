@@ -48,6 +48,9 @@ public:
   int16_t textWidth(const char *text) override;
   int16_t fontHeight() override;
 
+  /** Font per role; nullptr gives the built-in font at `scale`. Defaults match TFTDisplayDriver. */
+  void setRoleFont(TextRole role, const GFXfont *font, uint8_t scale = 1);
+
   SPIClass &spi() { return bus; }
   Adafruit_ILI9341 &tft() { return panel; }
   /** Where drawing lands: the canvas when buffered, else the panel. */
@@ -65,6 +68,14 @@ private:
   uint8_t rotation;
   uint32_t spiFrequency;
   uint8_t textScale = 2;
+  struct RoleFont
+  {
+    const GFXfont *font;
+    uint8_t scale;
+    int8_t ascent, descent;
+  };
+  RoleFont roleFonts[static_cast<uint8_t>(TextRole::RoleCount)];
+  const RoleFont *currentFont = nullptr;
 };
 
 #endif

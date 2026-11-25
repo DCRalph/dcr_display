@@ -1,6 +1,7 @@
 #include "Popup.h"
 
 #include "Display.h"
+#include "Draw.h"
 #include "Input.h"
 #include "ScreenManager.h"
 
@@ -13,7 +14,8 @@ void Popup::update()
 {
   for (const InputEvent &e : Inputs::events())
   {
-    if (e.kind == InputKind::Select || e.kind == InputKind::Back || e.kind == InputKind::Tap)
+    if (e.kind == InputKind::Select || e.kind == InputKind::Back || e.kind == InputKind::Tap ||
+        e.kind == InputKind::Swipe)
     {
       close();
       return;
@@ -33,15 +35,29 @@ Popup::Box Popup::box() const
   b.textY = b.y + p.popupPadding;
   b.textW = max<int32_t>(1, b.w - 2 * p.popupPadding);
   b.textH = max<int32_t>(1, b.h - 2 * p.popupPadding);
+
+  // Slides up into place the first time it is shown.
+  if (!entered)
+  {
+    entered = true;
+    enter.start(static_cast<float>(b.h / 4), 0.0f, 180, Ease::outCubic);
+  }
+  const int32_t dy = static_cast<int32_t>(enter.value());
+  b.y += dy;
+  b.textY += dy;
   return b;
 }
 
 void Popup::drawFrame(const Box &b)
 {
-  const Theme &t = Display::active().theme();
-  Display::active().fillRoundRect(b.x, b.y, b.w, b.h, Display::active().profile().popupRadius, t.popupBackground);
-  if (Display::active().colorDepth() == 1)
-    Display::active().drawRoundRect(b.x, b.y, b.w, b.h, Display::active().profile().popupRadius, t.text);
+  Display &d = Display::active();
+  const Theme &t = d.theme();
+  const int16_t r = d.profile().popupRadius;
+  // A dark band under the card stands in for a shadow on colour panels.
+  if (!t.oneBit)
+    d.fillRoundRect(b.x + 2, b.y + 4, b.w, b.h, r, Color::blend(t.background, Color::Black, 160));
+  d.fillRoundRect(b.x, b.y, b.w, b.h, r, t.popupBackground);
+  d.drawRoundRect(b.x, b.y, b.w, b.h, r, t.border);
 }
 
 void Popup::drawText(const Box &b, uint16_t titleColor)
@@ -65,7 +81,7 @@ void Popup::draw()
 {
   const Box b = box();
   drawFrame(b);
-  drawText(b, Display::active().theme().popupText);
+  drawText(b, Display::active().theme().popupTitle);
 }
 
 AutoClosePopup::AutoClosePopup(String title, String message, unsigned long durationMs)
@@ -112,8 +128,10 @@ ChoicePopup::ChoicePopup(String title, String message, std::vector<String> choic
   buttons.reserve(choices.size());
   for (size_t i = 0; i < choices.size(); i++)
   {
+    // The last choice is the affirmative one, as on phones.
     buttons.emplace_back(choices[i], [this, i]()
-                         { chosen = static_cast<int>(i); });
+                         { chosen = static_cast<int>(i); },
+                         i + 1 == choices.size() ? Button::Style::Primary : Button::Style::Secondary);
   }
   for (Button &button : buttons)
     group.add(button);
@@ -137,7 +155,7 @@ void ChoicePopup::update()
   layout(box());
   for (const InputEvent &e : Inputs::events())
   {
-    if (e.kind == InputKind::Back)
+    if (e.kind == InputKind::Back || e.kind == InputKind::Swipe)
       chosen = -1;
   }
   if (chosen == -2)
