@@ -144,14 +144,117 @@ void JoystickInput::poll(InputQueue &queue)
     pushSelect(queue, clicks, config_.defaultSelectClicks);
 }
 
+bool TouchInput::readOnce(TouchSample &s)
+{
+  if (config_.readSample)
+  {
+    if (!config_.readSample(s))
+      return false;
+    const uint16_t threshold = down_ ? config_.holdPressure : config_.startPressure;
+    return threshold == 0 || s.z > threshold;
+  }
+  return config_.read && config_.read(s.x, s.y);
+}
+
+// One filtered reading: pressure hysteresis, two-sample agreement and bounds.
+// A noisy reading mid-press reports the last good position.
+bool TouchInput::readFiltered(int16_t &x, int16_t &y)
+{
+  TouchSample a;
+  if (!readOnce(a))
+    return false;
+
+  bool good = (config_.width == 0 || (a.x >= 0 && a.x < config_.width)) &&
+              (config_.height == 0 || (a.y >= 0 && a.y < config_.height));
+  if (config_.agreePx > 0)
+  {
+    TouchSample b;
+    if (!readOnce(b))
+      return false;
+    good = good && abs(a.x - b.x) <= config_.agreePx && abs(a.y - b.y) <= config_.agreePx;
+    a.x = (a.x + b.x) / 2;
+    a.y = (a.y + b.y) / 2;
+  }
+
+  if (good)
+  {
+    goodX_ = a.x;
+    goodY_ = a.y;
+  }
+  else if (!down_)
+    return false;
+
+  x = goodX_;
+  y = goodY_;
+  return true;
+}
+
+// readFiltered with release debounce: a press survives releasePolls - 1 empty polls.
+bool TouchInput::readDebounced(int16_t &x, int16_t &y)
+{
+  if (readFiltered(x, y))
+  {
+    missedPolls_ = 0;
+    return true;
+  }
+  if (down_ && ++missedPolls_ < config_.releasePolls)
+  {
+    x = goodX_;
+    y = goodY_;
+    return true;
+  }
+  return false;
+}
+
+void TouchInput::sample()
+{
+  int16_t x, y;
+  if (!down_ && !midSeen_ && readFiltered(x, y))
+  {
+    midSeen_ = true;
+    midX_ = x;
+    midY_ = y;
+  }
+}
+
 void TouchInput::poll(InputQueue &queue)
 {
-  if (!config_.read)
+  if (!config_.read && !config_.readSample)
     return;
 
   int16_t x = 0, y = 0;
-  const bool touched = config_.read(x, y);
+  bool touched = readDebounced(x, y);
+  // A tap that began and ended between frames: report it now, it lifts next poll.
+  if (!touched && !down_ && midSeen_)
+  {
+    touched = true;
+    x = midX_;
+    y = midY_;
+  }
+  midSeen_ = false;
   const uint32_t now = millis();
+
+  // Hold the press state while suppressed so debounce and hysteresis still apply.
+  // A press already visible when suppression began ends with PointerUp, no Tap.
+  if (suppressed_)
+  {
+    if (touched)
+    {
+      if (!down_)
+        hiddenPress_ = true;
+      down_ = true;
+      return;
+    }
+    if (down_ && !hiddenPress_)
+    {
+      InputEvent up{InputKind::PointerUp};
+      up.x = lastX_;
+      up.y = lastY_;
+      queue.push(up);
+    }
+    down_ = hiddenPress_ = suppressed_ = false;
+    return;
+  }
 
   if (touched && !down_)
   {
