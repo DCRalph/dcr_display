@@ -1,13 +1,5 @@
-// Panel-derived defaults for the library's own chrome.
-//
-// The drawing facade is panel-agnostic, but the top bar, popups and menu rows
-// still need concrete pixel geometry. Hardcoding it produced a library that only
-// looked right on a ~240px colour TFT: on a 128x64 OLED the 20px top bar ate a
-// third of the screen and popup text landed outside its own box.
-//
-// `DisplayProfile::forPanel` picks a sane starting point from the panel's size
-// and colour depth. `Display::begin` applies it automatically, so an app only
-// overrides what it actually dislikes — and does so *after* begin().
+// Panel-derived geometry for the library's own chrome. `Display::begin` applies
+// `DisplayProfile::forPanel`; override with `setProfile` after begin().
 #pragma once
 
 #include <Arduino.h>
@@ -28,7 +20,7 @@ enum class TextRole : uint8_t
   RoleCount
 };
 
-/** Integer scale a TFT-style driver uses when it has no per-role font table. */
+/** Integer scale a scaling driver (TFT_eSPI, Adafruit_GFX) uses for each role. */
 constexpr uint8_t defaultTextScaleFor(TextRole role) noexcept
 {
   switch (role)
@@ -44,6 +36,15 @@ constexpr uint8_t defaultTextScaleFor(TextRole role) noexcept
   default:
     return 2;
   }
+}
+
+/** Nearest role for a legacy `setTextSize` value, for drivers with discrete fonts. */
+constexpr TextRole roleForTextSize(uint8_t size) noexcept
+{
+  return size <= 1   ? TextRole::Small
+         : size == 2 ? TextRole::Body
+         : size == 3 ? TextRole::Title
+                     : TextRole::XLarge;
 }
 
 /** Geometry for the built-in top bar and popups. All values are pixels. */

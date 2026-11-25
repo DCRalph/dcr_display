@@ -1,18 +1,33 @@
 {
   "name": "dcr_display",
-  "version": "0.2.0",
-  "description": "Display, menu, and screen-management library for ESP32. Panel-agnostic drawing facade with TFT_eSPI, Adafruit ILI9341, and U8g2 (monochrome) backends.",
-  "keywords": ["display", "tft", "oled", "menu", "esp32", "tft_espi", "u8g2"],
+  "version": "1.0.0",
+  "description": "Screens, menus, popups and widgets for ESP32 on any panel (mono OLED to large colour TFT) with any input (encoder, buttons, joystick, touch).",
+  "keywords": [
+    "display",
+    "tft",
+    "oled",
+    "menu",
+    "touch",
+    "encoder",
+    "joystick",
+    "esp32",
+    "tft_espi",
+    "u8g2"
+  ],
   "license": "GPL-3.0-or-later",
-  "frameworks": ["arduino"],
-  "platforms": ["espressif32"],
+  "frameworks": [
+    "arduino"
+  ],
+  "platforms": [
+    "espressif32"
+  ],
   "comment": [
-    "Panel libraries are deliberately NOT dependencies. Each driver is guarded by",
-    "__has_include, so add only the one your board needs to your own lib_deps:",
+    "Panel libraries are not dependencies: each driver is guarded by __has_include,",
+    "so add only the one your board needs to your own lib_deps:",
     "  bodmer/TFT_eSPI            -> TFTDisplayDriver",
     "  adafruit/Adafruit ILI9341  -> ILI9341DisplayDriver",
     "  olikraus/U8g2              -> U8g2DisplayDriver",
-    "Declaring them here would make every project download all three."
+    "dcr_logger (https://github.com/DCRalph/dcr_logger.git) must also be in lib_deps."
   ],
   "dependencies": [],
   "build": {

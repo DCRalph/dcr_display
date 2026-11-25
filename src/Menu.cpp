@@ -1,7 +1,6 @@
 #include "Menu.h"
-#include "ScreenManager.h"
 
-static const char *TAG = "Menu";
+#include "ScreenManager.h"
 
 namespace MenuStyle
 {
@@ -14,23 +13,22 @@ namespace MenuStyle
   {
     Metrics m;
     m.fallbackDisplayHeight = height == 0 ? 240 : height;
-
     if (height <= 80)
     {
-      // Rows sized to the u8g2 fonts a mono driver maps the roles onto.
       m.contentTopY = 12;
       m.small = {TextRole::Small, 8, 2};
       m.medium = {TextRole::Body, 12, 3};
       m.large = {TextRole::Title, 18, 4};
+      m.minTouchRowHeight = 16;
     }
-    else if (height <= 160)
+    else if (height <= 180)
     {
       m.contentTopY = 16;
-      m.small = {TextRole::Small, 10, 2};
-      m.medium = {TextRole::Body, 16, 3};
-      m.large = {TextRole::Title, 22, 4};
+      m.small = {TextRole::Small, 12, 2};
+      m.medium = {TextRole::Body, 18, 3};
+      m.large = {TextRole::Title, 26, 4};
+      m.minTouchRowHeight = 28;
     }
-
     return m;
   }
 
@@ -44,21 +42,17 @@ namespace MenuStyle
     return gMetrics;
   }
 
-  DrawStyle drawStyle(MenuSize size) noexcept
+  DrawStyle drawStyle(MenuSize size)
   {
-    switch (size)
-    {
-    case MenuSize::Small:
-      return gMetrics.small;
-    case MenuSize::Medium:
-      return gMetrics.medium;
-    case MenuSize::Large:
-    default:
-      return gMetrics.large;
-    }
+    DrawStyle s = size == MenuSize::Small    ? gMetrics.small
+                  : size == MenuSize::Medium ? gMetrics.medium
+                                             : gMetrics.large;
+    if (Input::hasPointer() && s.lineHeight < gMetrics.minTouchRowHeight)
+      s.lineHeight = gMetrics.minTouchRowHeight;
+    return s;
   }
 
-  int lineHeight(MenuSize size) noexcept
+  int lineHeight(MenuSize size)
   {
     return drawStyle(size).lineHeight;
   }
@@ -68,604 +62,512 @@ namespace MenuStyle
     return gMetrics.contentTopY;
   }
 
-  uint8_t itemsPerPage(MenuSize size, uint16_t displayHeight) noexcept
+  uint8_t itemsPerPage(MenuSize size, uint16_t displayHeight)
   {
-    const uint16_t h = displayHeight == 0 ? gMetrics.fallbackDisplayHeight : displayHeight;
-    if (h <= gMetrics.contentTopY)
-      return 1;
-    const int avail = static_cast<int>(h) - static_cast<int>(gMetrics.contentTopY);
+    const int h = displayHeight == 0 ? gMetrics.fallbackDisplayHeight : displayHeight;
+    const int avail = h - static_cast<int>(gMetrics.contentTopY);
     const int row = lineHeight(size);
-    const int n = row > 0 ? (avail / row) : 1;
-    if (n < 1)
-      return 1;
-    return static_cast<uint8_t>(n > 255 ? 255 : n);
+    const int n = row > 0 && avail > 0 ? avail / row : 1;
+    return static_cast<uint8_t>(n < 1 ? 1 : (n > 255 ? 255 : n));
+  }
+
+  void editTargets(int16_t rowY, int16_t rowH, Rect &minus, Rect &plus)
+  {
+    const int16_t right = static_cast<int16_t>(display.width()) - 4;
+    plus = Rect{static_cast<int16_t>(right - rowH), rowY, rowH, rowH};
+    minus = Rect{static_cast<int16_t>(plus.x - rowH - 2), rowY, rowH, rowH};
   }
 }
 
-MenuItem::MenuItem(String _name)
+namespace
 {
-  type = MenuItemType::None;
-  name = _name;
-  parent = nullptr;
-  textColor = TFT_WHITE;
-  activeTextColor = TFT_BLACK;
-  bgColor = TFT_WHITE;
+  uint16_t resolve(int32_t color, uint16_t fallback)
+  {
+    return color == kThemeColor ? fallback : static_cast<uint16_t>(color);
+  }
 }
 
-void MenuItem::addFunc(int8_t _clicksToRun, std::function<void()> _func)
+void MenuItem::addFunc(int8_t clicksToRun, std::function<void()> func)
 {
-  if (_clicksToRun == 0)
+  if (clicksToRun != 0 && func)
+    functions.push_back(ActionFunction{std::move(func), clicksToRun});
+}
+
+void MenuItem::setHidden(bool h)
+{
+  if (h == hidden)
     return;
-
-  ActionFunction actionFunc;
-  actionFunc.clicksToRun = _clicksToRun;
-  actionFunc.func = _func;
-
-  functions.push_back(actionFunc);
+  hidden = h;
+  if (parent)
+    parent->ensureActiveVisible();
 }
 
-void MenuItem::setName(String _name)
+void MenuItem::executeFunc(int8_t clicks)
 {
-  name = _name;
-}
-
-String MenuItem::getName()
-{
-  return name;
-}
-
-MenuItemType MenuItem::getType()
-{
-  return type;
-}
-
-void MenuItem::setHidden(bool _hidden)
-{
-  if (_hidden == hidden)
-    return;
-
-  hidden = _hidden;
-
-  if (hidden && parent != nullptr)
+  for (ActionFunction &f : functions)
   {
-    if (parent->items[parent->active] == this)
+    if (f.clicksToRun == clicks)
     {
-      if (parent->active < parent->numItems)
-      {
-        bool foundNext = false;
-        for (uint8_t i = parent->active + 1; i < parent->numItems; i++)
-        {
-          if (!parent->items[i]->isHidden())
-          {
-            parent->active = i;
-            foundNext = true;
-            break;
-          }
-        }
-
-        if (!foundNext)
-        {
-          for (int i = parent->active - 1; i >= 0; i--)
-          {
-            if (!parent->items[i]->isHidden())
-            {
-              parent->active = i;
-              break;
-            }
-          }
-        }
-      }
-    }
-  }
-
-  uint8_t visibleNumItems = parent->items.size();
-  for (uint8_t i = 0; i < visibleNumItems; i++)
-  {
-    if (parent->items[i]->isHidden())
-    {
-      visibleNumItems--;
-    }
-  }
-  parent->numItemsPerPage = visibleNumItems < parent->maxItemsPerPage ? visibleNumItems : parent->maxItemsPerPage;
-}
-
-void MenuItem::setTextColor(u16_t _color)
-{
-  textColor = _color;
-}
-
-void MenuItem::setActiveTextColor(u16_t _color)
-{
-  activeTextColor = _color;
-}
-
-void MenuItem::setBgColor(u16_t _color)
-{
-  bgColor = _color;
-}
-
-bool MenuItem::isHidden()
-{
-  return hidden;
-}
-
-void MenuItem::executeFunc()
-{
-  if (functions.size() > 0 && functions[0].clicksToRun == 1)
-    functions[0].func();
-}
-
-void MenuItem::executeFunc(int8_t _clicks)
-{
-  for (ActionFunction &actionFunc : functions)
-  {
-    if (actionFunc.clicksToRun == _clicks)
-    {
-      actionFunc.func();
-      break;
+      f.func();
+      return;
     }
   }
 }
 
-MenuItemAction::MenuItemAction(String _name, int8_t _clicksToRun, std::function<void()> _func) : MenuItem(_name)
+void MenuItem::run(int clicks, int rawClicks)
+{
+  for (ActionFunction &f : functions)
+  {
+    if (f.clicksToRun == clicks || f.clicksToRun == rawClicks)
+    {
+      f.func();
+      return;
+    }
+  }
+}
+
+MenuSize MenuItem::size() const
+{
+  return parent ? parent->getMenuSize() : MenuSize::Large;
+}
+
+void MenuItem::draw(int16_t x, int16_t y, bool active)
+{
+  drawRow(x, y, active);
+}
+
+void MenuItem::drawRow(int16_t x, int16_t y, bool active)
+{
+  const Theme &t = display.theme();
+  const MenuStyle::DrawStyle style = MenuStyle::drawStyle(size());
+  const int16_t w = static_cast<int16_t>(display.width()) - 4;
+  const int16_t h = static_cast<int16_t>(style.lineHeight);
+  const bool editing = active && isEditing();
+
+  const uint16_t text = resolve(textColor, t.text);
+  uint16_t ink = text;
+  if (editing)
+    display.drawRoundRect(x, y, w, h, style.radius, text);
+  else if (active)
+  {
+    display.fillRoundRect(x, y, w, h, style.radius, resolve(bgColor, t.highlight));
+    ink = resolve(activeTextColor, t.highlightText);
+  }
+
+  display.setTextRole(style.role);
+  display.setTextColor(ink);
+  display.setTextDatum(Datum::MiddleLeft);
+  const int16_t midY = y + h / 2;
+  display.drawString(name, x + 2, midY);
+
+  int16_t valueRight = x + w - 2;
+  if (editing && Input::hasPointer())
+  {
+    Rect minus, plus;
+    MenuStyle::editTargets(y, h, minus, plus);
+    display.setTextDatum(Datum::MiddleCenter);
+    display.drawRect(minus.x, minus.y + 1, minus.w, minus.h - 2, text);
+    display.drawRect(plus.x, plus.y + 1, plus.w, plus.h - 2, text);
+    display.drawString("-", minus.x + minus.w / 2, midY);
+    display.drawString("+", plus.x + plus.w / 2, midY);
+    valueRight = minus.x - 4;
+  }
+
+  const String value = valueText();
+  if (value.length())
+  {
+    display.setTextDatum(Datum::MiddleRight);
+    display.drawString(value, valueRight, midY);
+  }
+}
+
+MenuItemAction::MenuItemAction(String name, int8_t clicksToRun, std::function<void()> func) : MenuItem(std::move(name))
 {
   type = MenuItemType::Action;
-  addFunc(_clicksToRun, _func);
+  addFunc(clicksToRun, std::move(func));
 }
 
-MenuItemNavigate::MenuItemNavigate(String _name, const Screen2 *_target) : MenuItem(_name)
+MenuItemNavigate::MenuItemNavigate(String name, const Screen2 *target) : MenuItem(std::move(name))
 {
   type = MenuItemType::Navigate;
-  target = _target;
-
-  addFunc(MENU_DEFUALT_CLICKS, [this]()
-          { screenManager.setScreen(target); });
+  addRoute(MENU_DEFAULT_CLICKS, target);
 }
 
-void MenuItemNavigate::addRoute(int8_t _clicksToRun, const Screen2 *_target)
+void MenuItemNavigate::addRoute(int8_t clicksToRun, const Screen2 *target)
 {
-  addFunc(_clicksToRun, [this, _target]()
-          { screenManager.setScreen(_target); });
+  addFunc(clicksToRun, [target]()
+          { screenManager.setScreen(target); });
 }
 
 MenuItemBack::MenuItemBack() : MenuItem("Back")
 {
   type = MenuItemType::Back;
-
-  addFunc(MENU_DEFUALT_CLICKS, [this]()
+  addFunc(MENU_DEFAULT_CLICKS, [this]()
           {
-            if (parent && parent->getParentMenu())
-            {
-              parent->getParentMenu()->clearActiveSubmenu();
-            }
+            if (parent)
+              parent->back();
             else
-            {
-              screenManager.back();
-            }
-            //
-          });
+              screenManager.back(); });
 }
 
-MenuItemToggle::MenuItemToggle(String _name, bool *_value, bool _isMutable) : MenuItem(_name)
+MenuItemToggle::MenuItemToggle(String name, bool *value, bool isMutable)
+    : MenuItem(std::move(name)), value(value), isMutable(isMutable)
 {
   type = MenuItemType::Toggle;
-  value = _value;
-  isMutable = _isMutable;
-
-  addFunc(MENU_DEFUALT_CLICKS, [this]()
+  addFunc(MENU_DEFAULT_CLICKS, [this]()
           {
-            if (isMutable)
-              *value = !*value;
-            if (onChange != nullptr)
+            if (this->isMutable)
+              *this->value = !*this->value;
+            if (onChange)
               onChange(); });
 }
 
-void MenuItemToggle::setOnChange(std::function<void()> _onChange)
-{
-  onChange = _onChange;
-}
-
-void MenuItemToggle::removeOnChange()
-{
-  onChange = nullptr;
-}
-
-void MenuItemToggle::set(bool _value)
+void MenuItemToggle::set(bool v)
 {
   if (isMutable)
-    *value = _value;
+    *value = v;
 }
 
-bool MenuItemToggle::get()
-{
-  return *value;
-}
-
-MenuItemString::MenuItemString(String _name, String *_value) : MenuItem(_name)
+MenuItemString::MenuItemString(String name, String *value) : MenuItem(std::move(name)), value(value)
 {
   type = MenuItemType::String;
-  value = _value;
-
-  addFunc(MENU_DEFUALT_CLICKS, [this]() {});
 }
 
-void MenuItemString::setValue(String _value)
+void MenuItemNumberBase::toggleSelected()
 {
-  *value = _value;
-}
-
-String MenuItemString::getValue()
-{
-  return *value;
-}
-
-MenuItemNumberBase::MenuItemNumberBase(String _name) : MenuItem(_name)
-{
-  type = MenuItemType::Number;
-}
-
-bool MenuItemNumberBase::isSelected() const
-{
-  return selected;
-}
-
-void MenuItemNumberBase::setFastUpdate(bool _fastUpdate)
-{
-  fastUpdate = _fastUpdate;
-}
-
-bool MenuItemNumberBase::isFastUpdate()
-{
-  return fastUpdate;
-}
-
-template <typename T>
-MenuItemNumber<T>::MenuItemNumber(String _name, T *_value, T _min, T _max)
-    : MenuItemNumberBase(_name), value(_value), min(_min), max(_max)
-{
-  determineValueType();
-  isMutable = true;
-
-  addFunc(1, [this]()
-          { toggleSelected(); });
-}
-
-template <typename T>
-MenuItemNumber<T>::MenuItemNumber(String _name, T *_value, T _min, T _max, T _step)
-    : MenuItemNumberBase(_name), value(_value), min(_min), max(_max), step(_step)
-{
-  determineValueType();
-  isMutable = true;
-
-  addFunc(1, [this]()
-          { toggleSelected(); });
-}
-
-template <typename T>
-MenuItemNumber<T>::MenuItemNumber(String _name, T *_value)
-    : MenuItemNumberBase(_name), value(_value),
-      min(std::numeric_limits<T>::lowest()), max(std::numeric_limits<T>::max())
-{
-  determineValueType();
-  isMutable = false;
-}
-
-template <typename T>
-void MenuItemNumber<T>::determineValueType()
-{
-  if (std::is_same<T, int>::value)
-    valueType = NumberValueType::INT;
-  else if (std::is_same<T, float>::value)
-    valueType = NumberValueType::FLOAT;
-  else if (std::is_same<T, long>::value)
-    valueType = NumberValueType::LONG;
-  else if (std::is_same<T, uint8_t>::value)
-    valueType = NumberValueType::UINT8_T;
-  else if (std::is_same<T, uint32_t>::value)
-    valueType = NumberValueType::UINT32_T;
-  else
-    valueType = NumberValueType::UNKNOWN;
-}
-
-template <typename T>
-NumberValueType MenuItemNumber<T>::getValueType() const
-{
-  return valueType;
-}
-
-template <typename T>
-void MenuItemNumber<T>::setOnChange(std::function<void()> _onChange)
-{
-  onChange = _onChange;
-}
-
-template <typename T>
-void MenuItemNumber<T>::removeOnChange()
-{
-  onChange = nullptr;
-}
-
-template <typename T>
-void MenuItemNumber<T>::toggleSelected()
-{
-  if (isMutable)
+  if (!isMutable)
   {
-    selected = !selected;
-
-    if (!selected && onChange != nullptr)
-      onChange();
-  }
-  else
     selected = false;
-}
-
-template <typename T>
-void MenuItemNumber<T>::increase()
-{
-  if (value)
-  {
-    int64_t newValue = static_cast<int64_t>(*value) + static_cast<int64_t>(step);
-    if (newValue <= static_cast<int64_t>(max))
-    {
-      *value = static_cast<T>(newValue);
-    }
-    if (isFastUpdate() && onChange != nullptr)
-      onChange();
+    return;
   }
+  selected = !selected;
+  if (!selected && onChange)
+    onChange();
 }
 
-template <typename T>
-void MenuItemNumber<T>::decrease()
+void MenuItemNumberBase::stopEditing()
 {
-  if (value)
-  {
-    int64_t newValue = static_cast<int64_t>(*value) - static_cast<int64_t>(step);
-    if (newValue >= static_cast<int64_t>(min))
-    {
-      *value = static_cast<T>(newValue);
-    }
-    if (isFastUpdate() && onChange != nullptr)
-      onChange();
-  }
+  if (selected)
+    toggleSelected();
 }
 
-MenuItemSubmenu::MenuItemSubmenu(String _name, Menu *_submenu)
-    : MenuItem(_name), submenu(_submenu)
+MenuItemSubmenu::MenuItemSubmenu(String name, Menu *submenu) : MenuItem(std::move(name)), submenu(submenu)
 {
   type = MenuItemType::Submenu;
-
-  addFunc(MENU_DEFUALT_CLICKS, [this]()
-          {
-            if (parent && submenu)
-            {
-              parent->setActiveSubmenu(submenu);
-            } });
 }
 
-void MenuItemSubmenu::run()
+void MenuItemSubmenu::run(int clicks, int rawClicks)
 {
-  if (parent && submenu)
-  {
+  if (clicks == 1 && parent && submenu)
     parent->setActiveSubmenu(submenu);
-  }
+  else
+    MenuItem::run(clicks, rawClicks);
 }
 
-MenuItemSelect::MenuItemSelect(String _name,
-                               const std::vector<String> &_options,
-                               int initialIndex)
-    : MenuItem(_name), options(_options)
+MenuItemSelect::MenuItemSelect(String name, const std::vector<String> &opts, int initialIndex)
+    : MenuItem(std::move(name)), options(opts)
 {
   type = MenuItemType::Select;
-  if (initialIndex >= 0 && initialIndex < (int)options.size())
-  {
-    currentIndex = initialIndex;
-  }
-  else
-  {
-    currentIndex = 0;
-  }
-
-  addFunc(MENU_DEFUALT_CLICKS, [this]()
-          { toggleSelected(); });
+  setCurrentIndex(initialIndex);
 }
 
 void MenuItemSelect::nextOption()
 {
-  if (options.empty())
-    return;
-  currentIndex = (currentIndex + 1) % options.size();
-  if (onChange)
-    onChange();
+  adjust(1);
 }
 
 void MenuItemSelect::prevOption()
 {
-  if (options.empty())
+  adjust(-1);
+}
+
+void MenuItemSelect::adjust(int steps)
+{
+  if (options.empty() || steps == 0)
     return;
-  currentIndex = (currentIndex - 1 + options.size()) % options.size();
+  const int n = static_cast<int>(options.size());
+  currentIndex = (((currentIndex + steps) % n) + n) % n;
   if (onChange)
     onChange();
 }
 
 String MenuItemSelect::getSelectedOption() const
 {
-  if (options.empty())
-    return "";
-  return options[currentIndex];
+  return options.empty() ? String() : options[currentIndex];
 }
 
-void MenuItemSelect::setCurrentIndex(int _index)
+void MenuItemSelect::setCurrentIndex(int index)
 {
-  if (_index >= 0 && _index < (int)options.size())
-  {
-    currentIndex = _index;
-  }
-}
-
-int MenuItemSelect::getCurrentIndex() const
-{
-  return currentIndex;
-}
-
-void MenuItemSelect::setOnChange(std::function<void()> callback)
-{
-  onChange = callback;
+  if (index >= 0 && index < static_cast<int>(options.size()))
+    currentIndex = index;
 }
 
 void MenuItemSelect::toggleSelected()
 {
-  if (options.empty())
-    return;
-  selected = !selected;
-
-  if (!selected && onChange)
-    onChange();
+  if (!options.empty())
+    selected = !selected;
 }
 
-bool MenuItemSelect::isSelected() const
+void MenuItemSelect::stopEditing()
 {
-  return selected;
+  selected = false;
 }
 
-void MenuItemSelect::run()
+void MenuItemSelect::run(int clicks, int rawClicks)
 {
-  toggleSelected();
+  if (clicks == 1)
+    toggleSelected();
+  else
+    MenuItem::run(clicks, rawClicks);
 }
 
-Menu::Menu()
+void Menu::addMenuItem(MenuItem *item)
 {
-  active = 0;
-  setMenuSize(MenuSize::Medium);
+  item->parent = this;
+  items.push_back(item);
+  ensureActiveVisible();
 }
 
-Menu::Menu(MenuSize _size)
+uint8_t Menu::getItemsPerPage() const
 {
-  active = 0;
-  setMenuSize(_size);
+  return manualRowsPerPage ? manualRowsPerPage : MenuStyle::itemsPerPage(menuSize, display.height());
 }
 
-void Menu::setItemsPerPage(uint8_t _itemsPerPage)
+void Menu::setActive(uint16_t index)
 {
-  manualItemsPerPage = true;
-  maxItemsPerPage = _itemsPerPage;
-  numItemsPerPage = numItems < maxItemsPerPage ? numItems : maxItemsPerPage;
-}
-
-void Menu::syncItemsPerPageWithDisplay()
-{
-  if (manualItemsPerPage)
-    return;
-
-  uint16_t h = display.height();
-  if (h == 0)
-    return;
-
-  uint8_t want = MenuStyle::itemsPerPage(menuSize, h);
-  if (want == maxItemsPerPage)
-    return;
-
-  maxItemsPerPage = want;
-  numItemsPerPage = numItems < maxItemsPerPage ? numItems : maxItemsPerPage;
-}
-
-uint8_t Menu::getItemsPerPage()
-{
-  return maxItemsPerPage;
-}
-
-void Menu::setMenuSize(MenuSize _size)
-{
-  menuSize = _size;
-  manualItemsPerPage = false;
-  maxItemsPerPage = MenuStyle::itemsPerPage(_size, display.height());
-
-  numItems = items.size();
-  numItemsPerPage = numItems < maxItemsPerPage ? numItems : maxItemsPerPage;
-}
-
-MenuSize Menu::getMenuSize() const
-{
-  return menuSize;
-}
-
-void Menu::setActive(uint8_t _active)
-{
-  active = _active;
-}
-
-uint8_t Menu::getActive()
-{
-  return active;
+  if (index < items.size())
+    active = index;
+  ensureActiveVisible();
 }
 
 void Menu::nextItem()
 {
-  if (active < numItems - 1)
+  for (size_t i = active + 1; i < items.size(); i++)
   {
-    uint8_t startPosition = active;
-    do
+    if (!items[i]->isHidden())
     {
-      active++;
-      if (active >= numItems)
-      {
-        active = startPosition;
-        break;
-      }
-    } while (items[active]->isHidden());
+      active = static_cast<uint16_t>(i);
+      return;
+    }
   }
 }
 
 void Menu::prevItem()
 {
-  if (active > 0)
+  for (int i = static_cast<int>(active) - 1; i >= 0; i--)
   {
-    uint8_t startPosition = active;
-    do
+    if (!items[i]->isHidden())
     {
-      active--;
-      if (active >= numItems)
-      {
-        active = startPosition;
-        break;
-      }
-    } while (items[active]->isHidden());
+      active = static_cast<uint16_t>(i);
+      return;
+    }
   }
+}
+
+void Menu::moveBy(int steps)
+{
+  for (int i = 0; i < abs(steps); i++)
+    steps > 0 ? nextItem() : prevItem();
+}
+
+void Menu::ensureActiveVisible()
+{
+  if (items.empty() || active >= items.size())
+  {
+    active = 0;
+    return;
+  }
+  if (!items[active]->isHidden())
+    return;
+  const uint16_t before = active;
+  nextItem();
+  if (active == before)
+    prevItem();
 }
 
 void Menu::setActiveSubmenu(Menu *submenu)
 {
   activeSubmenu = submenu;
   if (submenu)
-  {
     submenu->setParentMenu(this);
+}
+
+void Menu::back()
+{
+  if (parentMenu)
+    parentMenu->clearActiveSubmenu();
+  else
+    screenManager.back();
+}
+
+void Menu::update()
+{
+  for (const InputEvent &e : Input::events())
+  {
+    Menu *target = this;
+    while (target->activeSubmenu)
+      target = target->activeSubmenu;
+    target->handle(e);
   }
 }
 
-void Menu::clearActiveSubmenu()
+void Menu::handle(const InputEvent &e)
 {
-  activeSubmenu = nullptr;
+  if (items.empty())
+  {
+    if ((e.kind == InputKind::Select && e.value == 1) || e.kind == InputKind::Back || e.kind == InputKind::Left ||
+        e.kind == InputKind::Tap)
+      back();
+    return;
+  }
+
+  ensureActiveVisible();
+  MenuItem *item = items[active];
+  const bool editing = item->isEditing();
+  const int rowH = MenuStyle::lineHeight(menuSize);
+
+  switch (e.kind)
+  {
+  case InputKind::Delta:
+    editing ? item->adjust(e.value) : moveBy(e.value);
+    break;
+  case InputKind::Up:
+    editing ? item->adjust(1) : moveBy(-1);
+    break;
+  case InputKind::Down:
+    editing ? item->adjust(-1) : moveBy(1);
+    break;
+  case InputKind::Right:
+    editing ? item->adjust(1) : item->run(1, 1);
+    break;
+  case InputKind::Left:
+    editing ? item->adjust(-1) : back();
+    break;
+  case InputKind::Back:
+    editing ? item->stopEditing() : back();
+    break;
+  case InputKind::Select:
+    item->run(e.value, e.rawClicks);
+    break;
+  case InputKind::Tap:
+    tap(e.x, e.y);
+    break;
+  case InputKind::PointerDown:
+    dragAccum = 0;
+    break;
+  case InputKind::PointerMove:
+    if (editing || rowH <= 0)
+      break;
+    dragAccum += e.value;
+    while (dragAccum >= rowH)
+    {
+      moveBy(-1);
+      dragAccum -= rowH;
+    }
+    while (dragAccum <= -rowH)
+    {
+      moveBy(1);
+      dragAccum += rowH;
+    }
+    break;
+  default:
+    break;
+  }
 }
 
-Menu *Menu::getActiveSubmenu()
+void Menu::tap(int16_t x, int16_t y)
 {
-  return activeSubmenu;
+  const int rowH = MenuStyle::lineHeight(menuSize);
+  const int top = MenuStyle::contentTopY();
+  if (y < top || rowH <= 0)
+    return;
+
+  std::vector<uint16_t> visible;
+  for (size_t i = 0; i < items.size(); i++)
+    if (!items[i]->isHidden())
+      visible.push_back(static_cast<uint16_t>(i));
+
+  const size_t slot = topVisible + (y - top) / rowH;
+  MenuItem *current = items[active];
+
+  if (current->isEditing())
+  {
+    if (slot < visible.size() && visible[slot] == active)
+    {
+      Rect minus, plus;
+      MenuStyle::editTargets(static_cast<int16_t>(top + (slot - topVisible) * rowH), static_cast<int16_t>(rowH), minus, plus);
+      if (plus.contains(x, y))
+        current->adjust(1);
+      else if (minus.contains(x, y))
+        current->adjust(-1);
+      else
+        current->stopEditing();
+    }
+    else
+      current->stopEditing();
+    return;
+  }
+
+  if (slot >= visible.size())
+    return;
+  active = visible[slot];
+  items[active]->run(1, 1);
 }
 
-void Menu::setParentMenu(Menu *parent)
+void Menu::layoutPage(const std::vector<uint16_t> &visible, uint8_t rows)
 {
-  parentMenu = parent;
+  size_t activeSlot = 0;
+  for (size_t i = 0; i < visible.size(); i++)
+    if (visible[i] == active)
+      activeSlot = i;
+
+  // Keep one row of lookahead so the next item is always in view.
+  const size_t margin = rows >= 3 ? 1 : 0;
+  if (activeSlot < topVisible + margin)
+    topVisible = static_cast<uint16_t>(activeSlot > margin ? activeSlot - margin : 0);
+  else if (activeSlot + margin >= topVisible + rows)
+    topVisible = static_cast<uint16_t>(activeSlot + margin + 1 - rows);
+
+  const size_t maxTop = visible.size() > rows ? visible.size() - rows : 0;
+  if (topVisible > maxTop)
+    topVisible = static_cast<uint16_t>(maxTop);
 }
 
-Menu *Menu::getParentMenu()
+void Menu::draw()
 {
-  return parentMenu;
-}
+  if (activeSubmenu)
+  {
+    activeSubmenu->draw();
+    return;
+  }
 
-void Menu::addMenuItem(MenuItem *_item)
-{
-  _item->parent = this;
-  items.push_back(_item);
+  ensureActiveVisible();
+  std::vector<uint16_t> visible;
+  visible.reserve(items.size());
+  for (size_t i = 0; i < items.size(); i++)
+    if (!items[i]->isHidden())
+      visible.push_back(static_cast<uint16_t>(i));
+  if (visible.empty())
+    return;
 
-  numItems = items.size();
-  numItemsPerPage = numItems < maxItemsPerPage ? numItems : maxItemsPerPage;
+  const uint8_t rows = getItemsPerPage();
+  layoutPage(visible, rows);
+
+  const int rowH = MenuStyle::lineHeight(menuSize);
+  const int top = MenuStyle::contentTopY();
+  for (uint8_t r = 0; r < rows && topVisible + r < visible.size(); r++)
+  {
+    const uint16_t idx = visible[topVisible + r];
+    items[idx]->draw(0, static_cast<int16_t>(top + r * rowH), idx == active);
+  }
+
+  if (visible.size() > rows)
+  {
+    const int w = display.width();
+    const int trackH = display.height() - top;
+    const int thumbH = max(3, trackH * rows / static_cast<int>(visible.size()));
+    const int thumbY = top + (trackH - thumbH) * topVisible / static_cast<int>(visible.size() - rows);
+    display.drawLine(w - 2, top, w - 2, display.height() - 1, display.theme().text);
+    display.fillRect(w - 3, thumbY, 3, thumbH, display.theme().text);
+  }
 }
