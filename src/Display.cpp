@@ -1,213 +1,276 @@
-// Display facade implementation.
 #include "Display.h"
+
+#include "Input.h"
+#include "Menu.h"
 #include "ScreenManager.h"
 
-Display::Display() : config(), screenManager(nullptr), showMenuBar(true) {}
+#undef LOG_TAG
+#define LOG_TAG "DISPLAY"
+#include <dcr_Logger.h>
 
-void Display::begin(const DisplayConfig &config, ScreenManager *screenManager)
+bool Display::begin(DisplayDriver &driver, ScreenManager *manager)
 {
-  this->config = config;
-  this->screenManager = screenManager;
+  panel = &driver;
+  screenManager = manager != nullptr ? manager : &::screenManager;
 
-  if (this->config.ops.init)
-    this->config.ops.init(this->config.context, this->config);
+  ready = panel->begin();
+  if (!ready)
+  {
+    debugE("Display driver failed to start");
+    return false;
+  }
+
+  const uint16_t w = panel->width(), h = panel->height();
+  const uint8_t depth = panel->colorDepth();
+  displayProfile = DisplayProfile::forPanel(w, h, depth);
+  currentTheme = Theme::forColorDepth(depth);
+  MenuStyle::setMetrics(MenuStyle::Metrics::forPanel(w, h, depth));
+  idleRedrawMs = panel->buffered() ? 0 : 1000;
+  textFg = currentTheme.text;
+  panel->setFont(TextRole::Body);
+
+  screenManager->init(*this);
 
   clearScreen();
   push();
+  debugI("%ux%u, %u-bit, %s", w, h, depth, panel->buffered() ? "buffered" : "direct");
+  return true;
 }
 
-void Display::setScreenManager(ScreenManager *screenManager)
+void Display::setScreenManager(ScreenManager *manager)
 {
-  this->screenManager = screenManager;
-}
-
-bool Display::isReady() const
-{
-  return config.context != nullptr || config.ops.push != nullptr;
+  screenManager = manager;
 }
 
 uint16_t Display::width() const
 {
-  return config.width;
+  return panel ? panel->width() : 0;
 }
 
 uint16_t Display::height() const
 {
-  return config.height;
-}
-
-uint8_t Display::rotation() const
-{
-  return config.rotation;
+  return panel ? panel->height() : 0;
 }
 
 uint8_t Display::colorDepth() const
 {
-  return config.colorDepth;
+  return panel ? panel->colorDepth() : 16;
 }
 
-void Display::clearScreen(uint16_t color)
+void Display::setTheme(const Theme &theme)
 {
-  if (config.ops.clear)
-    config.ops.clear(config.context, color);
+  currentTheme = theme;
+  dirty = true;
 }
 
-void Display::fillScreen(uint16_t color)
+void Display::setProfile(const DisplayProfile &profile)
 {
-  if (config.ops.fillScreen)
-    config.ops.fillScreen(config.context, color);
-  else if (config.ops.clear)
-    config.ops.clear(config.context, color);
+  displayProfile = profile;
+  dirty = true;
+}
+
+void Display::clearScreen(int32_t color)
+{
+  if (panel)
+    panel->fillScreen(color == kThemeColor ? currentTheme.background : static_cast<uint16_t>(color));
+}
+
+void Display::fillScreen(int32_t color)
+{
+  clearScreen(color);
 }
 
 void Display::push()
 {
-  if (config.ops.push)
-    config.ops.push(config.context);
+  if (panel)
+    panel->push();
 }
 
 void Display::setTextSize(uint8_t size)
 {
-  if (config.ops.setTextSize)
-    config.ops.setTextSize(config.context, size);
+  if (panel)
+    panel->setTextScale(size);
 }
 
-void Display::setTextDatum(uint8_t datum)
+void Display::setTextRole(TextRole role)
 {
-  if (config.ops.setTextDatum)
-    config.ops.setTextDatum(config.context, datum);
+  if (panel)
+    panel->setFont(role);
+}
+
+void Display::setTextDatum(uint8_t d)
+{
+  datum = d;
 }
 
 void Display::setTextColor(uint16_t color)
 {
-  if (config.ops.setTextColor)
-    config.ops.setTextColor(config.context, color);
+  textFg = color;
+  textBg = kThemeColor;
 }
 
 void Display::setTextColor(uint16_t fg, uint16_t bg)
 {
-  if (config.ops.setTextColorBg)
-    config.ops.setTextColorBg(config.context, fg, bg);
-  else if (config.ops.setTextColor)
-    config.ops.setTextColor(config.context, fg);
+  textFg = fg;
+  textBg = bg;
 }
 
 void Display::drawString(const String &text, int32_t x, int32_t y)
 {
-  if (config.ops.drawString)
-    config.ops.drawString(config.context, text, x, y);
+  drawString(text.c_str(), x, y);
+}
+
+void Display::drawString(const char *text, int32_t x, int32_t y)
+{
+  if (!panel || text == nullptr || *text == '\0')
+    return;
+
+  // Datums 0-8 form a 3x3 grid; 9-11 are TFT_eSPI baselines, drawn as bottom.
+  const uint8_t col = datum <= 8 ? datum % 3 : datum - 9;
+  const uint8_t row = datum <= 8 ? datum / 3 : 2;
+  if (col > 0)
+    x -= panel->textWidth(text) * col / 2;
+  if (row > 0)
+    y -= panel->fontHeight() * row / 2;
+
+  panel->drawText(text, x, y, textFg, textBg);
+}
+
+void Display::drawPixel(int32_t x, int32_t y, uint16_t color)
+{
+  if (panel)
+    panel->drawPixel(x, y, color);
 }
 
 void Display::drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t color)
 {
-  if (config.ops.drawLine)
-    config.ops.drawLine(config.context, x0, y0, x1, y1, color);
+  if (panel)
+    panel->drawLine(x0, y0, x1, y1, color);
 }
 
 void Display::drawRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t color)
 {
-  if (config.ops.drawRect)
-    config.ops.drawRect(config.context, x, y, w, h, color);
+  if (panel)
+    panel->drawRect(x, y, w, h, color);
 }
 
 void Display::fillRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t color)
 {
-  if (config.ops.fillRect)
-    config.ops.fillRect(config.context, x, y, w, h, color);
+  if (panel)
+    panel->fillRect(x, y, w, h, color);
 }
 
 void Display::drawRoundRect(int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, uint16_t color)
 {
-  if (config.ops.drawRoundRect)
-    config.ops.drawRoundRect(config.context, x, y, w, h, r, color);
+  if (panel)
+    panel->drawRoundRect(x, y, w, h, r, color);
 }
 
 void Display::fillRoundRect(int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, uint16_t color)
 {
-  if (config.ops.fillRoundRect)
-    config.ops.fillRoundRect(config.context, x, y, w, h, r, color);
+  if (panel)
+    panel->fillRoundRect(x, y, w, h, r, color);
 }
 
-void Display::drawSmoothArc(int32_t x, int32_t y, int32_t r, int32_t ir, int32_t startAngle, int32_t endAngle, uint16_t fgColor, uint16_t bgColor, bool roundEnds)
+void Display::drawSmoothArc(int32_t x, int32_t y, int32_t r, int32_t ir, int32_t startAngle, int32_t endAngle,
+                            uint16_t fgColor, uint16_t bgColor, bool roundEnds)
 {
-  if (config.ops.drawSmoothArc)
-    config.ops.drawSmoothArc(config.context, x, y, r, ir, startAngle, endAngle, fgColor, bgColor, roundEnds);
+  if (panel)
+    panel->drawSmoothArc(x, y, r, ir, startAngle, endAngle, fgColor, bgColor, roundEnds);
 }
 
 int16_t Display::textWidth(const String &text)
 {
-  if (!config.ops.textWidth)
-    return 0;
-  return config.ops.textWidth(config.context, text);
+  return textWidth(text.c_str());
+}
+
+int16_t Display::textWidth(const char *text)
+{
+  return panel && text ? panel->textWidth(text) : 0;
 }
 
 int16_t Display::fontHeight()
 {
-  if (!config.ops.fontHeight)
-    return 0;
-  return config.ops.fontHeight(config.context);
+  return panel ? panel->fontHeight() : 0;
 }
 
 uint16_t Display::color565(uint8_t r, uint8_t g, uint8_t b)
 {
-  if (!config.ops.color565)
-    return 0;
-  return config.ops.color565(config.context, r, g, b);
+  return panel ? panel->color565(r, g, b) : Color::rgb(r, g, b);
 }
 
-void Display::wrapTextInBounds(String text, int x, int y, int width, int height, int textSize, int gap, uint16_t color, int textAlignment)
+int Display::wrapTextInBounds(const String &text, int x, int y, int width, int height, TextRole role, int gap,
+                              uint16_t color, int textAlignment)
 {
-  setTextSize(textSize);
+  setTextRole(role);
+  return drawWrapped(text, x, y, width, height, gap, color, textAlignment);
+}
+
+int Display::wrapTextInBounds(const String &text, int x, int y, int width, int height, int textSize, int gap,
+                              uint16_t color, int textAlignment)
+{
+  setTextSize(static_cast<uint8_t>(textSize));
+  return drawWrapped(text, x, y, width, height, gap, color, textAlignment);
+}
+
+int Display::drawWrapped(const String &text, int x, int y, int width, int height, int gap, uint16_t color,
+                         int textAlignment)
+{
   setTextColor(color);
-  setTextDatum(textAlignment);
+  const uint8_t col = textAlignment <= 8 ? textAlignment % 3 : 0;
+  setTextDatum(col);
 
-  String wrappedText = "";
-  String word = "";
-  int lines = 1;
+  const int lineHeight = fontHeight() + gap;
+  int lines = 0;
+  String line;
 
-  for (int i = 0; i < text.length(); i++)
+  auto flush = [&]() -> bool
   {
-    char c = text.charAt(i);
+    if (lineHeight > 0 && (lines + 1) * lineHeight - gap > height && lines > 0)
+      return false;
+    drawString(line, x, y + lines * lineHeight);
+    lines++;
+    line = "";
+    return true;
+  };
 
-    if (c == ' ')
+  const int len = text.length();
+  int i = 0;
+  while (i <= len)
+  {
+    int end = i;
+    while (end < len && text[end] != ' ' && text[end] != '\n')
+      end++;
+    const String word = text.substring(i, end);
+    if (word.length() == 0 && end < len && text[end] == ' ')
     {
-      String currentLine = wrappedText.substring(wrappedText.lastIndexOf('\n') + 1);
-      int currentLineWidth = textWidth(currentLine) + textWidth(word);
-      if (currentLineWidth > width)
-      {
-        wrappedText += "\n";
-        lines++;
-      }
+      i = end + 1;
+      continue;
+    }
+    const String candidate = line.length() ? line + " " + word : word;
 
-      wrappedText += word + " ";
-      word = "";
+    if (line.length() && textWidth(candidate) > width)
+    {
+      if (!flush())
+        return lines;
+      line = word;
     }
     else
-      word += c;
-  }
+      line = candidate;
 
-  String currentLine = wrappedText.substring(wrappedText.lastIndexOf('\n') + 1);
-  int currentLineWidth = textWidth(currentLine) + textWidth(word);
-  if (currentLineWidth > width)
-  {
-    wrappedText += "\n" + word;
-    lines++;
+    if (end >= len || text[end] == '\n')
+    {
+      if (!flush())
+        return lines;
+    }
+    i = end + 1;
   }
-  else
-    wrappedText += word;
-
-  for (int i = 0; i < lines; i++)
-  {
-    String line = wrappedText.substring(0, wrappedText.indexOf('\n'));
-    wrappedText = wrappedText.substring(wrappedText.indexOf('\n') + 1);
-
-    drawString(line, x, y + i * (fontHeight() + gap));
-  }
+  return lines;
 }
 
-void Display::noTopBar(void)
+void Display::noTopBar()
 {
-  showMenuBar = false;
+  showTopBar = false;
 }
 
 void Display::drawTopBar()
@@ -215,44 +278,80 @@ void Display::drawTopBar()
   if (!screenManager || !screenManager->getCurrentScreen())
     return;
 
-  fillRect(0, 0, width(), 20, screenManager->getScreenTopBarColor());
-
-  setTextSize(2);
-  setTextColor(screenManager->getScreenTopBarTextColor());
-  setTextDatum(ML_DATUM);
-
-  drawString(String(screenManager->getCurrentScreen()->name), 10, 10);
-  char buf[20];
-  sprintf(buf, "%i%%", getBatteryPercentage());
-
-  setTextDatum(MR_DATUM);
-  drawString(buf, width() - 10, 10);
-}
-
-void Display::render(ScreenManager &manager)
-{
-  setScreenManager(&manager);
-  render();
-}
-
-void Display::render()
-{
-  if (!screenManager)
+  const Screen2 *screen = screenManager->getCurrentScreen();
+  if (topBarRenderer)
+  {
+    topBarRenderer(*this, screen);
     return;
+  }
 
-  clearScreen();
+  const DisplayProfile &p = displayProfile;
+  const int16_t barHeight = static_cast<int16_t>(p.topBarHeight);
+  uint16_t fg = screen->topBarTextColor != kThemeColor ? screen->topBarTextColor : currentTheme.topBarText;
 
-  screenManager->draw();
-  if (showMenuBar)
-    drawTopBar();
-  showMenuBar = true;
-
-  if (screenManager->isPopupActive())
-    screenManager->drawPopup();
+  if (p.topBarFilled && colorDepth() > 1)
+  {
+    const uint16_t bg = screen->topBarColor != kThemeColor ? screen->topBarColor : currentTheme.topBar;
+    fillRect(0, 0, width(), barHeight, bg);
+  }
   else
-    screenManager->update();
+  {
+    fg = currentTheme.text;
+    if (p.topBarUnderline)
+      drawLine(0, barHeight - 1, width(), barHeight - 1, currentTheme.text);
+  }
 
-  push();
+  setTextRole(p.topBarTextRole);
+  setTextColor(fg);
+  const int16_t midY = barHeight / 2;
+
+  setTextDatum(Datum::MiddleLeft);
+  drawString(screen->name, p.topBarPaddingX, midY);
+
+  if (batteryProvider)
+  {
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%d%%", batteryProvider());
+    setTextDatum(Datum::MiddleRight);
+    drawString(buf, width() - p.topBarPaddingX, midY);
+  }
+}
+
+bool Display::render()
+{
+  if (!ready || !screenManager)
+    return false;
+
+  Inputs::beginFrame();
+
+  const uint32_t now = millis();
+  const Screen2 *screen = screenManager->getCurrentScreen();
+  const int32_t interval = screen && screen->redrawMs >= 0 ? screen->redrawMs : static_cast<int32_t>(idleRedrawMs);
+  const bool draw = dirty || screenManager->isPopupActive() || interval == 0 ||
+                    now - lastDrawMs >= static_cast<uint32_t>(interval);
+  dirty = false;
+
+  if (draw)
+  {
+    clearScreen();
+    screenManager->draw();
+    if (showTopBar)
+      drawTopBar();
+  }
+  showTopBar = true;
+
+  // Input lands after this frame's draw, so state it changed shows on the next.
+  screenManager->update();
+  if (Inputs::hadEventsThisFrame())
+    dirty = true;
+
+  if (draw)
+  {
+    screenManager->drawPopup();
+    push();
+    lastDrawMs = now;
+  }
+  return draw;
 }
 
 Display display;

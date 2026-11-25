@@ -1,37 +1,70 @@
 #pragma once
 
-#include "Display.h"
-#include "Popup.h"
-#include "ScreenTypes.h"
+#include <Arduino.h>
+#include <memory>
 #include <vector>
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
-/** Optional: return true to skip stuck-screen checks for this screen (e.g. Home). */
-using ScreenExceptionPredicate = bool (*)(const Screen2 *screen);
+#include "Popup.h"
+#include "ScreenTypes.h"
 
+class Display;
+
+// Owns the current screen, navigation history, the active popup and the
+// current screen's background task. Screen changes are queued and applied on
+// the render task, so `setScreen` and `showPopup` are safe from any task.
 class ScreenManager
 {
-private:
-  Display *display = nullptr;
+public:
+  void init(Display &display);
 
+  void draw();
+  /** Runs the popup or the screen, then applies a pending screen change. */
+  void update();
+
+  const Screen2 *getCurrentScreen() const;
+  void setScreen(const Screen2 *screen);
+  /** Applies a queued `setScreen` now. True if the screen changed. */
+  bool applyPendingScreenChange();
+
+  void back();
+  void clearHistory();
+  bool goToHistoryIndex(size_t index);
+
+  /** Takes ownership. Replaces any popup already showing. Safe from any task. */
+  void showPopup(Popup *popup);
+  /** Closes the active popup after its current update returns. */
+  void closePopup();
+  void drawPopup();
+  bool isPopupActive() const;
+
+  bool startBackgroundTask(ScreenBackgroundStep step, const char *name, uint32_t stackDepth,
+                           uint32_t loopDelayMs = 1000, uint32_t watchdogTimeoutMs = 15000);
+  /** Requests a stop; with `waitForStop`, blocks up to `timeoutMs` (0 = forever) for it to exit. */
+  bool stopBackgroundTask(bool waitForStop = false, uint32_t timeoutMs = 0);
+  bool isBackgroundTaskActive(const Screen2 *screen) const;
+
+private:
+  void updateHistory(const Screen2 *screen);
+  void adoptPendingPopup();
+  bool startRegisteredBackgroundTask();
+  static void backgroundTaskRunner(void *param);
+  static void backgroundWatchdogRunner(void *param);
+
+  Display *display = nullptr;
   const Screen2 *currentScreen = nullptr;
-  const Screen2 *pendingScreen = nullptr;
+  const Screen2 *volatile pendingScreen = nullptr;
   std::vector<const Screen2 *> screenHistory;
 
-  Popup *popup = nullptr;
-  bool popupActive = false;
+  std::unique_ptr<Popup> popup;
+  Popup *pendingPopup = nullptr;
+  volatile bool closeRequested = false;
+  portMUX_TYPE popupMux = portMUX_INITIALIZER_UNLOCKED;
 
-  ScreenExceptionPredicate exceptionPredicate = nullptr;
-
-#ifdef ENABLE_STUCK_SCREEN_GUARD
-  unsigned long lastButtonCheckTime = 0;
-  const Screen2 *lastCheckedScreen = nullptr;
-  bool popupShownForCurrentScreen = false;
-  static const unsigned long BUTTON_CHECK_INTERVAL_MS = 10000;
-#endif
-
+  // Lifecycle: no task deletes another. The runner and watchdog exit themselves,
+  // and each clears a handle only while it still owns it (compare-and-clear).
   TaskHandle_t backgroundTaskHandle = nullptr;
   TaskHandle_t backgroundWatchdogHandle = nullptr;
   const Screen2 *backgroundTaskOwner = nullptr;
@@ -41,50 +74,9 @@ private:
   volatile bool backgroundTaskShouldStop = false;
   volatile bool backgroundTaskStepInProgress = false;
   volatile uint32_t backgroundTaskStepStartMs = 0;
-
-  void updateHistory(const Screen2 *screen);
-  void checkForNoButtons();
-  static void backgroundTaskRunner(void *pvParameters);
-  static void backgroundTaskWatchdogRunner(void *pvParameters);
-
-public:
-  ScreenManager();
-
-  void init(Display &displayRef);
-
-  void draw(void);
-  void update(void);
-
-  const Screen2 *getCurrentScreen(void);
-
-  void setScreen(const Screen2 *screen);
-  bool applyPendingScreenChange(void);
-
-  void back(void);
-  void clearHistory(void);
-  bool goToHistoryIndex(size_t index);
-
-  void setExceptionScreenPredicate(ScreenExceptionPredicate fn) { exceptionPredicate = fn; }
-
-#ifdef ENABLE_STUCK_SCREEN_GUARD
-  void resetPopupShownFlag(void);
-#endif
-
-  uint16_t getScreenTopBarColor(void);
-  uint16_t getScreenTopBarTextColor(void);
-
-  void showPopup(Popup *p);
-  void closePopup(void);
-  void drawPopup(void);
-  bool isPopupActive(void);
-
-  bool startBackgroundTask(ScreenBackgroundStep stepCode,
-                           const char *name,
-                           uint32_t stackDepth,
-                           uint32_t loopDelayMs = 1000,
-                           uint32_t watchdogTimeoutMs = 15000);
-  void stopBackgroundTask(void);
-  bool isBackgroundTaskActive(const Screen2 *screen);
+  volatile uint32_t backgroundTaskGeneration = 0;
+  volatile bool backgroundStartInProgress = false;
+  portMUX_TYPE backgroundTaskMux = portMUX_INITIALIZER_UNLOCKED;
 };
 
 extern ScreenManager screenManager;

@@ -1,386 +1,320 @@
 #include "ScreenManager.h"
 
-#include <esp_log.h>
+#include "Display.h"
 
-static const char *TAG = "ScreenManager";
+#undef LOG_TAG
+#define LOG_TAG "SCREEN"
+#include <dcr_Logger.h>
 
-ScreenManager::ScreenManager() = default;
+namespace
+{
+  constexpr size_t kMaxHistory = 10;
+}
 
 void ScreenManager::init(Display &displayRef)
 {
   display = &displayRef;
   displayRef.setScreenManager(this);
-#ifdef ENABLE_STUCK_SCREEN_GUARD
-  lastButtonCheckTime = 0;
-  lastCheckedScreen = nullptr;
-  popupShownForCurrentScreen = false;
-#endif
-  backgroundTaskHandle = nullptr;
-  backgroundWatchdogHandle = nullptr;
-  backgroundTaskOwner = nullptr;
-  backgroundTaskStep = nullptr;
-  backgroundTaskShouldStop = false;
-  backgroundTaskStepInProgress = false;
-  backgroundTaskStepStartMs = 0;
-  ESP_LOGI(TAG, "Initialized");
 }
 
-void ScreenManager::draw(void)
+void ScreenManager::draw()
 {
   const Screen2 *s = currentScreen;
   if (s && s->draw)
     s->draw();
 }
 
-void ScreenManager::update(void)
+void ScreenManager::update()
 {
-  if (popupActive)
+  adoptPendingPopup();
+
+  if (popup)
+  {
+    popup->update();
+    if (closeRequested)
+    {
+      popup.reset();
+      closeRequested = false;
+      if (display)
+        display->invalidate();
+    }
+  }
+  else
+  {
+    if (currentScreen && currentScreen->backgroundTask.step && !isBackgroundTaskActive(currentScreen))
+      startRegisteredBackgroundTask();
+
+    const Screen2 *s = currentScreen;
+    if (s && s->update)
+      s->update();
+  }
+
+  if (applyPendingScreenChange() && display)
+    display->invalidate();
+}
+
+const Screen2 *ScreenManager::getCurrentScreen() const
+{
+  const Screen2 *pending = pendingScreen;
+  return pending ? pending : currentScreen;
+}
+
+void ScreenManager::setScreen(const Screen2 *screen)
+{
+  if (screen == nullptr)
     return;
-
-  const Screen2 *s = currentScreen;
-  if (s && s->update)
-    s->update();
-
-  applyPendingScreenChange();
-
-  checkForNoButtons();
+  pendingScreen = screen;
 }
 
-const Screen2 *ScreenManager::getCurrentScreen(void)
+bool ScreenManager::applyPendingScreenChange()
 {
-  if (pendingScreen)
-    return pendingScreen;
-  return currentScreen;
-}
-
-bool ScreenManager::applyPendingScreenChange(void)
-{
-  if (pendingScreen == nullptr)
+  const Screen2 *next = pendingScreen;
+  if (next == nullptr)
     return false;
+  pendingScreen = nullptr;
 
-    Serial.printf("Applying pending screen change to: %s\n", pendingScreen->name);
-
-  if (pendingScreen->draw == nullptr || pendingScreen->update == nullptr)
+  if (next->draw == nullptr)
   {
-    showPopup(new Popup("Error", "Pending screen has no draw or update function"));
-    pendingScreen = nullptr;
+    debugE("Screen '%s' has no draw function", next->name);
     return false;
   }
-
-  if (currentScreen == pendingScreen)
-  {
-    ESP_LOGI(TAG, "Same screen, skipping");
-    pendingScreen = nullptr;
+  if (next == currentScreen)
     return false;
-  }
 
   stopBackgroundTask();
 
   if (currentScreen && currentScreen->onExit)
     currentScreen->onExit();
 
-  currentScreen = pendingScreen;
-  pendingScreen = nullptr;
-
-  ESP_LOGI(TAG, ">> %s", currentScreen->name);
-
+  currentScreen = next;
+  debugI(">> %s", currentScreen->name);
   updateHistory(currentScreen);
 
-  if (currentScreen && currentScreen->onEnter)
+  if (currentScreen->onEnter)
     currentScreen->onEnter();
 
-#ifdef ENABLE_STUCK_SCREEN_GUARD
-  lastButtonCheckTime = millis();
-  lastCheckedScreen = currentScreen;
-  popupShownForCurrentScreen = false;
-#endif
+  if (currentScreen->backgroundTask.step)
+    startRegisteredBackgroundTask();
 
   return true;
 }
 
-void ScreenManager::setScreen(const Screen2 *screen)
-{
-  Serial.printf("Setting screen to: %s\n", screen->name);
-  pendingScreen = screen;
-}
-
-void ScreenManager::back(void)
+void ScreenManager::back()
 {
   if (screenHistory.size() > 1)
   {
     screenHistory.pop_back();
     pendingScreen = screenHistory.back();
-    ESP_LOGI(TAG, "Going back to: %s", pendingScreen->name);
-  }
-  else
-  {
-    ESP_LOGI(TAG, "Cannot go back - no screen history");
   }
 }
 
-void ScreenManager::clearHistory(void)
+void ScreenManager::clearHistory()
 {
-  const Screen2 *current = nullptr;
-  if (!screenHistory.empty())
-    current = screenHistory.back();
-
+  const Screen2 *current = screenHistory.empty() ? nullptr : screenHistory.back();
   screenHistory.clear();
-
   if (current != nullptr)
     screenHistory.push_back(current);
 }
 
 void ScreenManager::updateHistory(const Screen2 *screen)
 {
-  if (screen == nullptr)
-  {
-    ESP_LOGW(TAG, "Attempted to add null screen to history");
-    return;
-  }
-
   if (screenHistory.empty() || screenHistory.back() != screen)
   {
     screenHistory.push_back(screen);
-    if (screenHistory.size() > 10)
+    if (screenHistory.size() > kMaxHistory)
       screenHistory.erase(screenHistory.begin());
   }
 }
 
 bool ScreenManager::goToHistoryIndex(size_t index)
 {
-  if (index < screenHistory.size())
-  {
-    ESP_LOGI(TAG, "Navigating to history index %u: %s", (unsigned)index, screenHistory[index]->name);
-
-    if (index != screenHistory.size() - 1)
-    {
-      pendingScreen = screenHistory[index];
-      screenHistory.resize(index + 1);
-      return true;
-    }
-
-    ESP_LOGI(TAG, "Already at requested screen");
+  if (index >= screenHistory.size() || index == screenHistory.size() - 1)
     return false;
-  }
-
-  ESP_LOGW(TAG, "Invalid history index: %u", (unsigned)index);
-  return false;
-}
-
-uint16_t ScreenManager::getScreenTopBarColor(void)
-{
-  const Screen2 *s = getCurrentScreen();
-  if (!s)
-    return TFT_BLUE;
-  return s->topBarColor;
-}
-
-uint16_t ScreenManager::getScreenTopBarTextColor(void)
-{
-  const Screen2 *s = getCurrentScreen();
-  if (!s)
-    return TFT_BLACK;
-  return s->topBarTextColor;
+  pendingScreen = screenHistory[index];
+  screenHistory.resize(index + 1);
+  return true;
 }
 
 void ScreenManager::showPopup(Popup *p)
 {
-  popup = p;
-  popupActive = true;
+  if (p == nullptr)
+    return;
+  taskENTER_CRITICAL(&popupMux);
+  Popup *replaced = pendingPopup;
+  pendingPopup = p;
+  taskEXIT_CRITICAL(&popupMux);
+  // Never shown, so no other task can hold it.
+  delete replaced;
+  if (display)
+    display->invalidate();
 }
 
-void ScreenManager::closePopup(void)
+void ScreenManager::adoptPendingPopup()
 {
-  popupActive = false;
-}
-
-void ScreenManager::drawPopup(void)
-{
-  if (popupActive && popup)
+  taskENTER_CRITICAL(&popupMux);
+  Popup *next = pendingPopup;
+  pendingPopup = nullptr;
+  taskEXIT_CRITICAL(&popupMux);
+  if (next)
   {
+    popup.reset(next);
+    closeRequested = false;
+  }
+}
+
+void ScreenManager::closePopup()
+{
+  closeRequested = true;
+}
+
+void ScreenManager::drawPopup()
+{
+  if (popup && !closeRequested)
     popup->draw();
-    popup->update();
-  }
 }
 
-bool ScreenManager::isPopupActive(void)
+bool ScreenManager::isPopupActive() const
 {
-  return popupActive;
+  return popup != nullptr || pendingPopup != nullptr;
 }
 
-void ScreenManager::checkForNoButtons()
+bool ScreenManager::startRegisteredBackgroundTask()
 {
-#ifndef ENABLE_STUCK_SCREEN_GUARD
-  return;
-#else
-  if (!currentScreen)
-    return;
-
-  if (exceptionPredicate && exceptionPredicate(currentScreen))
-    return;
-
-  if (popupShownForCurrentScreen)
-    return;
-
-  if (popupActive)
-    return;
-
-  unsigned long t = millis();
-  if (t - lastButtonCheckTime < BUTTON_CHECK_INTERVAL_MS)
-    return;
-
-  lastButtonCheckTime = t;
-  lastCheckedScreen = currentScreen;
-
-  // Placeholder: full parity requires Menu/active-control registration.
-  (void)lastCheckedScreen;
-#endif
+  const ScreenBackgroundTaskConfig &cfg = currentScreen->backgroundTask;
+  if (backgroundTaskHandle != nullptr)
+    return false; // previous runner still draining; retried from update()
+  return startBackgroundTask(cfg.step, cfg.name ? cfg.name : currentScreen->name, cfg.stackDepth,
+                             cfg.loopDelayMs, cfg.watchdogTimeoutMs);
 }
 
-#ifdef ENABLE_STUCK_SCREEN_GUARD
-void ScreenManager::resetPopupShownFlag(void)
+void ScreenManager::backgroundTaskRunner(void *param)
 {
-  popupShownForCurrentScreen = false;
-  lastButtonCheckTime = millis();
-}
-#endif
+  auto *m = static_cast<ScreenManager *>(param);
+  const Screen2 *owner = m->backgroundTaskOwner;
 
-void ScreenManager::backgroundTaskRunner(void *pvParameters)
-{
-  ScreenManager *manager = static_cast<ScreenManager *>(pvParameters);
-  if (manager == nullptr)
+  while (m->isBackgroundTaskActive(owner) && m->backgroundTaskStep != nullptr)
   {
-    vTaskDelete(nullptr);
-    return;
+    // Start time before the flag: the watchdog must never pair the new flag with a stale time.
+    m->backgroundTaskStepStartMs = millis();
+    m->backgroundTaskStepInProgress = true;
+    m->backgroundTaskStep(owner);
+    m->backgroundTaskStepInProgress = false;
+
+    for (uint32_t waited = 0; waited < m->backgroundTaskLoopDelayMs && m->isBackgroundTaskActive(owner); waited += 50)
+      vTaskDelay(pdMS_TO_TICKS(50));
   }
 
-  const Screen2 *ownerScreen = manager->backgroundTaskOwner;
-  while (manager->isBackgroundTaskActive(ownerScreen))
+  m->backgroundTaskStepInProgress = false;
+  taskENTER_CRITICAL(&m->backgroundTaskMux);
+  if (m->backgroundTaskHandle == xTaskGetCurrentTaskHandle())
   {
-    if (manager->backgroundTaskStep == nullptr)
-      break;
-
-    manager->backgroundTaskStepInProgress = true;
-    manager->backgroundTaskStepStartMs = millis();
-    manager->backgroundTaskStep(ownerScreen);
-    manager->backgroundTaskStepInProgress = false;
-
-    const uint32_t waitStepMs = 50;
-    uint32_t waitedMs = 0;
-    while (waitedMs < manager->backgroundTaskLoopDelayMs && manager->isBackgroundTaskActive(ownerScreen))
-    {
-      vTaskDelay(pdMS_TO_TICKS(waitStepMs));
-      waitedMs += waitStepMs;
-    }
+    m->backgroundTaskHandle = nullptr;
+    m->backgroundTaskOwner = nullptr;
+    m->backgroundTaskStep = nullptr;
+    m->backgroundTaskShouldStop = false;
+    m->backgroundTaskStepStartMs = 0;
   }
-
-  manager->backgroundTaskStepInProgress = false;
-  manager->backgroundTaskHandle = nullptr;
-  manager->backgroundTaskOwner = nullptr;
-  manager->backgroundTaskStep = nullptr;
-  manager->backgroundTaskShouldStop = false;
-  manager->backgroundTaskStepStartMs = 0;
-
-  if (manager->backgroundWatchdogHandle != nullptr)
-  {
-    vTaskDelete(manager->backgroundWatchdogHandle);
-    manager->backgroundWatchdogHandle = nullptr;
-  }
-
+  taskEXIT_CRITICAL(&m->backgroundTaskMux);
   vTaskDelete(nullptr);
 }
 
-void ScreenManager::backgroundTaskWatchdogRunner(void *pvParameters)
+void ScreenManager::backgroundWatchdogRunner(void *param)
 {
-  ScreenManager *manager = static_cast<ScreenManager *>(pvParameters);
-  if (manager == nullptr)
-  {
-    vTaskDelete(nullptr);
-    return;
-  }
+  auto *m = static_cast<ScreenManager *>(param);
+  const uint32_t generation = m->backgroundTaskGeneration;
 
-  while (manager->backgroundTaskHandle != nullptr)
+  while (m->backgroundTaskGeneration == generation && m->backgroundTaskHandle != nullptr)
   {
-    if (manager->backgroundTaskStepInProgress)
+    if (m->backgroundTaskStepInProgress)
     {
-      uint32_t elapsedMs = millis() - manager->backgroundTaskStepStartMs;
-      if (elapsedMs > manager->backgroundTaskWatchdogTimeoutMs)
+      const uint32_t elapsed = millis() - m->backgroundTaskStepStartMs;
+      if (elapsed > m->backgroundTaskWatchdogTimeoutMs)
       {
-        ESP_LOGE(TAG, "Background task watchdog timeout (%ums). Killing task.", (unsigned)elapsedMs);
-        TaskHandle_t taskToKill = manager->backgroundTaskHandle;
-
-        manager->backgroundTaskShouldStop = true;
-        manager->backgroundTaskStepInProgress = false;
-        manager->backgroundTaskStepStartMs = 0;
-        manager->backgroundTaskHandle = nullptr;
-        manager->backgroundTaskOwner = nullptr;
-        manager->backgroundTaskStep = nullptr;
-
-        if (taskToKill != nullptr)
-          vTaskDelete(taskToKill);
-
+        debugE("Background step overran %lums, stopping", (unsigned long)elapsed);
+        m->backgroundTaskShouldStop = true;
         break;
       }
     }
-
     vTaskDelay(pdMS_TO_TICKS(200));
   }
 
-  manager->backgroundWatchdogHandle = nullptr;
+  taskENTER_CRITICAL(&m->backgroundTaskMux);
+  if (m->backgroundWatchdogHandle == xTaskGetCurrentTaskHandle())
+    m->backgroundWatchdogHandle = nullptr;
+  taskEXIT_CRITICAL(&m->backgroundTaskMux);
   vTaskDelete(nullptr);
 }
 
-bool ScreenManager::startBackgroundTask(ScreenBackgroundStep stepCode,
-                                        const char *name,
-                                        uint32_t stackDepth,
-                                        uint32_t loopDelayMs,
-                                        uint32_t watchdogTimeoutMs)
+bool ScreenManager::startBackgroundTask(ScreenBackgroundStep step, const char *name, uint32_t stackDepth,
+                                        uint32_t loopDelayMs, uint32_t watchdogTimeoutMs)
 {
-  if (backgroundTaskHandle != nullptr || currentScreen == nullptr || stepCode == nullptr)
+  if (currentScreen == nullptr || step == nullptr)
     return false;
+
+  taskENTER_CRITICAL(&backgroundTaskMux);
+  if (backgroundTaskHandle != nullptr || backgroundWatchdogHandle != nullptr || backgroundStartInProgress)
+  {
+    taskEXIT_CRITICAL(&backgroundTaskMux);
+    return false;
+  }
+  backgroundStartInProgress = true;
+  backgroundTaskGeneration++;
+  taskEXIT_CRITICAL(&backgroundTaskMux);
 
   backgroundTaskShouldStop = false;
   backgroundTaskOwner = currentScreen;
-  backgroundTaskStep = stepCode;
+  backgroundTaskStep = step;
   backgroundTaskLoopDelayMs = loopDelayMs;
   backgroundTaskWatchdogTimeoutMs = watchdogTimeoutMs;
   backgroundTaskStepInProgress = false;
   backgroundTaskStepStartMs = 0;
 
-  BaseType_t created = xTaskCreate(ScreenManager::backgroundTaskRunner, name, stackDepth, this, 1, &backgroundTaskHandle);
-  if (created != pdPASS)
+  if (xTaskCreate(backgroundTaskRunner, name, stackDepth, this, 1, &backgroundTaskHandle) != pdPASS)
   {
+    backgroundTaskHandle = nullptr;
     backgroundTaskOwner = nullptr;
     backgroundTaskStep = nullptr;
-    backgroundTaskHandle = nullptr;
-    backgroundTaskShouldStop = false;
+    backgroundStartInProgress = false;
+    debugE("Could not start background task '%s'", name);
     return false;
   }
 
-  BaseType_t watchdogCreated = xTaskCreate(ScreenManager::backgroundTaskWatchdogRunner, "screenBgWdog", 3072, this, 2, &backgroundWatchdogHandle);
-  if (watchdogCreated != pdPASS)
+  if (xTaskCreate(backgroundWatchdogRunner, "screenBgWdog", 3072, this, 2, &backgroundWatchdogHandle) != pdPASS)
   {
-    TaskHandle_t taskToKill = backgroundTaskHandle;
-    backgroundTaskHandle = nullptr;
-    backgroundTaskOwner = nullptr;
-    backgroundTaskStep = nullptr;
+    // The runner may already be mid-step on the other core: let it see the stop and exit itself.
+    backgroundWatchdogHandle = nullptr;
     backgroundTaskShouldStop = true;
-    if (taskToKill != nullptr)
-      vTaskDelete(taskToKill);
+    backgroundStartInProgress = false;
     return false;
   }
 
+  backgroundStartInProgress = false;
   return true;
 }
 
-void ScreenManager::stopBackgroundTask(void)
+bool ScreenManager::stopBackgroundTask(bool waitForStop, uint32_t timeoutMs)
 {
   backgroundTaskShouldStop = true;
+
+  TaskHandle_t handle = backgroundTaskHandle;
+  if (!waitForStop || handle == nullptr)
+    return true;
+  if (handle == xTaskGetCurrentTaskHandle())
+    return false;
+
+  const uint32_t start = millis();
+  while (backgroundTaskHandle != nullptr)
+  {
+    if (timeoutMs > 0 && millis() - start >= timeoutMs)
+      return false;
+    vTaskDelay(pdMS_TO_TICKS(20));
+  }
+  return true;
 }
 
-bool ScreenManager::isBackgroundTaskActive(const Screen2 *screen)
+bool ScreenManager::isBackgroundTaskActive(const Screen2 *screen) const
 {
-  return (backgroundTaskHandle != nullptr) && (backgroundTaskOwner == screen) && !backgroundTaskShouldStop;
+  return backgroundTaskHandle != nullptr && backgroundTaskOwner == screen && !backgroundTaskShouldStop;
 }
 
 ScreenManager screenManager;

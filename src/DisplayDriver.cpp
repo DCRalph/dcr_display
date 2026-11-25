@@ -1,0 +1,181 @@
+#include "DisplayDriver.h"
+
+#include <math.h>
+
+namespace
+{
+  int32_t clampRadius(int32_t r, int32_t w, int32_t h)
+  {
+    const int32_t limit = (w < h ? w : h) / 2;
+    if (r > limit)
+      r = limit;
+    return r < 0 ? 0 : r;
+  }
+}
+
+void DisplayDriver::fillScreen(uint16_t color)
+{
+  fillRect(0, 0, width(), height(), color);
+}
+
+void DisplayDriver::drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t color)
+{
+  if (x0 == x1)
+  {
+    fillRect(x0, y0 < y1 ? y0 : y1, 1, abs(y1 - y0) + 1, color);
+    return;
+  }
+  if (y0 == y1)
+  {
+    fillRect(x0 < x1 ? x0 : x1, y0, abs(x1 - x0) + 1, 1, color);
+    return;
+  }
+
+  const int32_t dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+  const int32_t dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+  int32_t err = dx + dy;
+  for (;;)
+  {
+    drawPixel(x0, y0, color);
+    if (x0 == x1 && y0 == y1)
+      break;
+    const int32_t e2 = 2 * err;
+    if (e2 >= dy)
+    {
+      err += dy;
+      x0 += sx;
+    }
+    if (e2 <= dx)
+    {
+      err += dx;
+      y0 += sy;
+    }
+  }
+}
+
+void DisplayDriver::drawRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t color)
+{
+  if (w <= 0 || h <= 0)
+    return;
+  fillRect(x, y, w, 1, color);
+  fillRect(x, y + h - 1, w, 1, color);
+  fillRect(x, y, 1, h, color);
+  fillRect(x + w - 1, y, 1, h, color);
+}
+
+// quadrants: 1 top-left, 2 top-right, 4 bottom-right, 8 bottom-left.
+void DisplayDriver::drawCircleQuadrants(int32_t cx, int32_t cy, int32_t r, uint8_t quadrants, uint16_t color)
+{
+  int32_t f = 1 - r, ddx = 1, ddy = -2 * r, x = 0, y = r;
+  while (x <= y)
+  {
+    if (quadrants & 1)
+    {
+      drawPixel(cx - y, cy - x, color);
+      drawPixel(cx - x, cy - y, color);
+    }
+    if (quadrants & 2)
+    {
+      drawPixel(cx + x, cy - y, color);
+      drawPixel(cx + y, cy - x, color);
+    }
+    if (quadrants & 4)
+    {
+      drawPixel(cx + x, cy + y, color);
+      drawPixel(cx + y, cy + x, color);
+    }
+    if (quadrants & 8)
+    {
+      drawPixel(cx - y, cy + x, color);
+      drawPixel(cx - x, cy + y, color);
+    }
+    if (f >= 0)
+    {
+      y--;
+      ddy += 2;
+      f += ddy;
+    }
+    x++;
+    ddx += 2;
+    f += ddx;
+  }
+}
+
+// halves: 1 top, 2 bottom. Each scanline spans `stretch` extra pixels between the arcs.
+void DisplayDriver::fillCircleHalves(int32_t cx, int32_t cy, int32_t r, uint8_t halves, int32_t stretch, uint16_t color)
+{
+  for (int32_t dy = 0; dy <= r; dy++)
+  {
+    const int32_t dx = static_cast<int32_t>(sqrtf(static_cast<float>(r * r - dy * dy)) + 0.5f);
+    if (halves & 1)
+      fillRect(cx - dx, cy - dy, 2 * dx + 1 + stretch, 1, color);
+    if ((halves & 2) && dy > 0)
+      fillRect(cx - dx, cy + dy, 2 * dx + 1 + stretch, 1, color);
+  }
+}
+
+void DisplayDriver::drawRoundRect(int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, uint16_t color)
+{
+  r = clampRadius(r, w, h);
+  if (r == 0)
+  {
+    drawRect(x, y, w, h, color);
+    return;
+  }
+  fillRect(x + r, y, w - 2 * r, 1, color);
+  fillRect(x + r, y + h - 1, w - 2 * r, 1, color);
+  fillRect(x, y + r, 1, h - 2 * r, color);
+  fillRect(x + w - 1, y + r, 1, h - 2 * r, color);
+  drawCircleQuadrants(x + r, y + r, r, 1, color);
+  drawCircleQuadrants(x + w - r - 1, y + r, r, 2, color);
+  drawCircleQuadrants(x + w - r - 1, y + h - r - 1, r, 4, color);
+  drawCircleQuadrants(x + r, y + h - r - 1, r, 8, color);
+}
+
+void DisplayDriver::fillRoundRect(int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, uint16_t color)
+{
+  r = clampRadius(r, w, h);
+  if (r == 0)
+  {
+    fillRect(x, y, w, h, color);
+    return;
+  }
+  fillRect(x, y + r, w, h - 2 * r, color);
+  const int32_t stretch = w - 2 * r - 1;
+  fillCircleHalves(x + r, y + r, r, 1, stretch, color);
+  fillCircleHalves(x + r, y + h - r - 1, r, 2, stretch, color);
+}
+
+// Pixel-scan fallback: correct but slow (O(r^2)), and not anti-aliased.
+void DisplayDriver::drawSmoothArc(int32_t x, int32_t y, int32_t r, int32_t ir, int32_t startAngle, int32_t endAngle,
+                                  uint16_t fgColor, uint16_t, bool)
+{
+  if (r <= 0 || ir > r)
+    return;
+  startAngle = ((startAngle % 360) + 360) % 360;
+  endAngle = ((endAngle % 360) + 360) % 360;
+  const bool full = startAngle == endAngle;
+  const int32_t r2 = r * r, ir2 = ir * ir;
+
+  for (int32_t dy = -r; dy <= r; dy++)
+  {
+    for (int32_t dx = -r; dx <= r; dx++)
+    {
+      const int32_t d2 = dx * dx + dy * dy;
+      if (d2 > r2 || d2 < ir2)
+        continue;
+      if (!full)
+      {
+        // 0 deg at six o'clock, increasing clockwise.
+        float a = atan2f(static_cast<float>(-dx), static_cast<float>(dy)) * 57.29578f;
+        if (a < 0)
+          a += 360.0f;
+        const bool inside = startAngle < endAngle ? (a >= startAngle && a <= endAngle)
+                                                  : (a >= startAngle || a <= endAngle);
+        if (!inside)
+          continue;
+      }
+      drawPixel(x + dx, y + dy, fgColor);
+    }
+  }
+}

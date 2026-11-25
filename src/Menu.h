@@ -1,11 +1,17 @@
 #pragma once
 
-#include "Display.h"
-#include "ScreenTypes.h"
-
+#include <Arduino.h>
+#include <functional>
+#include <limits>
+#include <type_traits>
 #include <vector>
 
-#define MENU_DEFUALT_CLICKS 1
+#include "Display.h"
+#include "Input.h"
+#include "ScreenTypes.h"
+#include "Widgets.h"
+
+#define MENU_DEFAULT_CLICKS 1
 
 class Menu;
 
@@ -31,67 +37,41 @@ enum class MenuSize
 
 namespace MenuStyle
 {
-  /** First Y coordinate used for menu rows (below top bar); must match `Menu::draw`. */
-  constexpr uint16_t kContentTopY = 22;
-
-  /**
-   * When `display.height()` is not yet known (e.g. static init before `Display::begin`),
-   * assume this height so paging is non-degenerate until the first `draw()` sync.
-   */
-  constexpr uint16_t kFallbackDisplayHeight = 240;
-
-  constexpr int lineHeight(MenuSize size) noexcept
-  {
-    switch (size)
-    {
-    case MenuSize::Small:
-      return 12;
-    case MenuSize::Medium:
-      return 20;
-    case MenuSize::Large:
-    default:
-      return 28;
-    }
-  }
-
   struct DrawStyle
   {
-    uint8_t textSize;
+    TextRole role;
     int lineHeight;
     uint8_t radius;
   };
 
-  constexpr DrawStyle drawStyle(MenuSize size) noexcept
+  /** Row geometry per density preset. `Display::begin` installs `forPanel`; override after. */
+  struct Metrics
   {
-    const int lh = lineHeight(size);
-    switch (size)
-    {
-    case MenuSize::Small:
-      return {1, lh, 2};
-    case MenuSize::Medium:
-      return {2, lh, 3};
-    case MenuSize::Large:
-    default:
-      return {3, lh, 4};
-    }
-  }
+    uint16_t contentTopY = 22; // first row's y, i.e. the top bar height
+    // Panel height assumed before `Display::begin` (static menus are built first).
+    uint16_t fallbackDisplayHeight = 240;
 
-  /**
-   * How many menu rows fit on screen for the given density preset and display height.
-   * Uses the same row height as menu drawing (`drawStyle`) and the content top offset.
-   */
-  constexpr uint8_t itemsPerPage(MenuSize size, uint16_t displayHeight) noexcept
-  {
-    const uint16_t h = displayHeight == 0 ? kFallbackDisplayHeight : displayHeight;
-    if (h <= kContentTopY)
-      return 1;
-    const int avail = static_cast<int>(h) - static_cast<int>(kContentTopY);
-    const int row = lineHeight(size);
-    const int n = row > 0 ? (avail / row) : 1;
-    if (n < 1)
-      return 1;
-    return static_cast<uint8_t>(n > 255 ? 255 : n);
-  }
+    DrawStyle small = {TextRole::Small, 12, 2};
+    DrawStyle medium = {TextRole::Body, 20, 3};
+    DrawStyle large = {TextRole::Title, 28, 4};
+
+    // Rows grow to at least this while a pointer source is attached.
+    uint16_t minTouchRowHeight = 32;
+
+    static Metrics forPanel(uint16_t width, uint16_t height, uint8_t colorDepth) noexcept;
+  };
+
+  void setMetrics(const Metrics &metrics) noexcept;
+  const Metrics &metrics() noexcept;
+
+  /** Style for a preset, with rows enlarged for touch when a pointer is attached. */
+  DrawStyle drawStyle(MenuSize size);
+  int lineHeight(MenuSize size);
+  uint16_t contentTopY() noexcept;
+  uint8_t itemsPerPage(MenuSize size, uint16_t displayHeight);
+
+  /** The -/+ touch targets drawn on a row being edited. */
+  void editTargets(int16_t rowY, int16_t rowH, Rect &minus, Rect &plus);
 }
 
 struct ActionFunction
@@ -100,60 +80,69 @@ struct ActionFunction
   int8_t clicksToRun;
 };
 
+// One menu row. Subclasses supply a value to show and, if editable, capture
+// navigation while editing. Bound functions run on matching select click counts.
 class MenuItem
 {
   friend class Menu;
 
-private:
-  String name;
+public:
+  explicit MenuItem(String name) : name(std::move(name)) {}
+  virtual ~MenuItem() = default;
+
+  void addFunc(int8_t clicksToRun, std::function<void()> func);
+  void setName(String newName) { name = std::move(newName); }
+  const String &getName() const { return name; }
+  MenuItemType getType() const { return type; }
+
+  void setTextColor(uint16_t color) { textColor = color; }       // row text when not highlighted
+  void setActiveTextColor(uint16_t color) { activeTextColor = color; }
+  void setBgColor(uint16_t color) { bgColor = color; }           // highlight fill when active
+  void setHidden(bool hidden);
+  bool isHidden() const { return hidden; }
+
+  void executeFunc() { executeFunc(MENU_DEFAULT_CLICKS); }
+  void executeFunc(int8_t clicks);
+
+  /** Runs the function bound to `clicks` (or the raw hardware count). */
+  virtual void run(int clicks = 1, int rawClicks = 1);
+  virtual String valueText() const { return String(); }
+  virtual bool isEditing() const { return false; }
+  /** While editing: positive steps increase. */
+  virtual void adjust(int steps) {}
+  virtual void stopEditing() {}
+
+  virtual void draw(int16_t x, int16_t y, bool active);
+
+  std::vector<ActionFunction> functions;
 
 protected:
-  Menu *parent;
-  MenuItemType type;
+  /** Standard row: highlight, name left, valueText() right, -/+ targets when editing by touch. */
+  void drawRow(int16_t x, int16_t y, bool active);
+  MenuSize size() const;
+
+  Menu *parent = nullptr;
+  MenuItemType type = MenuItemType::None;
+  int32_t textColor = kThemeColor;
+  int32_t activeTextColor = kThemeColor;
+  int32_t bgColor = kThemeColor;
+
+private:
+  String name;
   bool hidden = false;
-
-  u16_t textColor;
-  u16_t activeTextColor;
-  u16_t bgColor;
-
-public:
-  std::vector<ActionFunction> functions;
-  MenuItem(String _name);
-
-  void addFunc(int8_t _clicksToRun, std::function<void()> _func);
-  void setName(String _name);
-  String getName();
-  MenuItemType getType();
-  /** Text (and value) color when the row is not highlighted. */
-  void setTextColor(u16_t _color);
-  /** Text color when the row is the active selection (on the highlight bar). */
-  void setActiveTextColor(u16_t _color);
-  /** Fill color of the active-selection highlight bar. */
-  void setBgColor(u16_t _color);
-  void setHidden(bool _hidden);
-  bool isHidden();
-
-  void executeFunc();
-  void executeFunc(int8_t _clicks);
-
-  virtual void draw(uint8_t _x, uint8_t _y, bool _active);
-  virtual void run();
 };
 
 class MenuItemAction : public MenuItem
 {
 public:
-  MenuItemAction(String _name, int8_t _clicksToRun, std::function<void()> _func);
+  MenuItemAction(String name, int8_t clicksToRun, std::function<void()> func);
 };
 
 class MenuItemNavigate : public MenuItem
 {
-private:
-  const Screen2 *target = nullptr;
-
 public:
-  MenuItemNavigate(String _name, const Screen2 *_target);
-  void addRoute(int8_t _clicksToRun, const Screen2 *_target);
+  MenuItemNavigate(String name, const Screen2 *target);
+  void addRoute(int8_t clicksToRun, const Screen2 *target);
 };
 
 class MenuItemBack : public MenuItem
@@ -164,179 +153,220 @@ public:
 
 class MenuItemToggle : public MenuItem
 {
+public:
+  MenuItemToggle(String name, bool *value, bool isMutable = true);
+
+  void setOnChange(std::function<void()> callback) { onChange = std::move(callback); }
+  void removeOnChange() { onChange = nullptr; }
+  void set(bool v);
+  bool get() const { return *value; }
+  String valueText() const override { return *value ? "ON" : "OFF"; }
+
 private:
   bool *value;
-  bool isMutable = false;
+  bool isMutable;
   std::function<void()> onChange;
-
-public:
-  MenuItemToggle(String _name, bool *_value, bool _isMutable = true);
-
-  void setOnChange(std::function<void()> _onChange);
-  void removeOnChange();
-
-  void set(bool _value);
-  bool get();
-
-  void draw(uint8_t _x, uint8_t _y, bool _active) override;
 };
 
 class MenuItemString : public MenuItem
 {
+public:
+  MenuItemString(String name, String *value);
+
+  void setValue(String v) { *value = std::move(v); }
+  String getValue() const { return *value; }
+  String valueText() const override { return *value; }
+
 private:
   String *value;
-
-public:
-  MenuItemString(String _name, String *_value);
-
-  void draw(uint8_t _x, uint8_t _y, bool _active) override;
-  void setValue(String _value);
-  String getValue();
 };
 
-enum class NumberValueType
-{
-  INT,
-  FLOAT,
-  LONG,
-  UINT8_T,
-  UINT32_T,
-  UNKNOWN
-};
-
+// Editable (or read-only) number. Select starts editing, navigation changes the
+// value within [min, max], select again commits and fires onChange.
 class MenuItemNumberBase : public MenuItem
 {
+public:
+  explicit MenuItemNumberBase(String name) : MenuItem(std::move(name)) { type = MenuItemType::Number; }
+
+  bool isSelected() const { return selected; }
+  bool isEditing() const override { return selected; }
+  void stopEditing() override;
+  void toggleSelected();
+
+  /** Fire onChange on every step while editing, not only on commit. */
+  void setFastUpdate(bool fast) { fastUpdate = fast; }
+  bool isFastUpdate() const { return fastUpdate; }
+  void setOnChange(std::function<void()> callback) { onChange = std::move(callback); }
+  void removeOnChange() { onChange = nullptr; }
+
 protected:
   bool selected = false;
   bool isMutable = false;
   bool fastUpdate = false;
-
-public:
-  MenuItemNumberBase(String _name);
-
-  virtual ~MenuItemNumberBase() = default;
-
-  bool isSelected() const;
-  virtual void increase() = 0;
-  virtual void decrease() = 0;
-  virtual NumberValueType getValueType() const = 0;
-
-  void setFastUpdate(bool _fastUpdate);
-  bool isFastUpdate();
+  std::function<void()> onChange;
 };
 
 template <typename T>
 class MenuItemNumber : public MenuItemNumberBase
 {
+  static_assert(std::is_arithmetic<T>::value, "MenuItemNumber needs an arithmetic type");
+
+public:
+  MenuItemNumber(String name, T *value, T min, T max, T step = 1)
+      : MenuItemNumberBase(std::move(name)), value(value), min(min), max(max), step(step)
+  {
+    isMutable = true;
+    addFunc(1, [this]()
+            { toggleSelected(); });
+  }
+
+  /** Read-only display of `*value`. */
+  MenuItemNumber(String name, T *value)
+      : MenuItemNumberBase(std::move(name)), value(value),
+        min(std::numeric_limits<T>::lowest()), max(std::numeric_limits<T>::max()) {}
+
+  void setDecimals(uint8_t places) { decimals = places; }
+
+  void adjust(int steps) override
+  {
+    if (!value || !isMutable || steps == 0)
+      return;
+    for (int i = 0; i < abs(steps); i++)
+      *value = steps > 0 ? stepUp(*value) : stepDown(*value);
+    if (fastUpdate && onChange)
+      onChange();
+  }
+
+  void increase() { adjust(1); }
+  void decrease() { adjust(-1); }
+
+  String valueText() const override
+  {
+    if (!value)
+      return String();
+    if constexpr (std::is_floating_point<T>::value)
+      return String(static_cast<double>(*value), static_cast<unsigned int>(decimals));
+    else if constexpr (std::is_signed<T>::value)
+      return String(static_cast<long long>(*value));
+    else
+      return String(static_cast<unsigned long long>(*value));
+  }
+
 private:
+  T stepUp(T v) const
+  {
+    if constexpr (std::is_floating_point<T>::value)
+      return v + step > max ? max : v + step;
+    else
+    {
+      T next;
+      return (__builtin_add_overflow(v, step, &next) || next > max) ? max : next;
+    }
+  }
+
+  T stepDown(T v) const
+  {
+    if constexpr (std::is_floating_point<T>::value)
+      return v - step < min ? min : v - step;
+    else
+    {
+      T next;
+      return (__builtin_sub_overflow(v, step, &next) || next < min) ? min : next;
+    }
+  }
+
   T *value;
   T min;
   T max;
   T step = 1;
-
-  NumberValueType valueType;
-
-  std::function<void()> onChange;
-
-  void determineValueType();
-
-public:
-  MenuItemNumber(String _name, T *_value, T _min, T _max);
-  MenuItemNumber(String _name, T *_value, T _min, T _max, T _step);
-  MenuItemNumber(String _name, T *_value);
-
-  void toggleSelected();
-  virtual void increase() override;
-  virtual void decrease() override;
-  virtual NumberValueType getValueType() const override;
-  virtual void draw(uint8_t _x, uint8_t _y, bool _active) override;
-
-  void setOnChange(std::function<void()> _onChange);
-  void removeOnChange();
+  uint8_t decimals = 2;
 };
-
-template class MenuItemNumber<int>;
-template class MenuItemNumber<float>;
-template class MenuItemNumber<long>;
-template class MenuItemNumber<uint8_t>;
-template class MenuItemNumber<uint32_t>;
-template class MenuItemNumber<uint64_t>;
 
 class MenuItemSubmenu : public MenuItem
 {
+public:
+  MenuItemSubmenu(String name, Menu *submenu);
+  void run(int clicks = 1, int rawClicks = 1) override;
+  String valueText() const override { return ">"; }
+
 private:
   Menu *submenu;
-
-public:
-  MenuItemSubmenu(String _name, Menu *_submenu);
-  virtual void run() override;
 };
 
 class MenuItemSelect : public MenuItem
 {
+public:
+  MenuItemSelect(String name, const std::vector<String> &options, int initialIndex = 0);
+
+  void nextOption();
+  void prevOption();
+  String getSelectedOption() const;
+  void setCurrentIndex(int index);
+  int getCurrentIndex() const { return currentIndex; }
+  void setOnChange(std::function<void()> callback) { onChange = std::move(callback); }
+  void toggleSelected();
+  bool isSelected() const { return selected; }
+
+  void run(int clicks = 1, int rawClicks = 1) override;
+  String valueText() const override { return getSelectedOption(); }
+  bool isEditing() const override { return selected; }
+  void adjust(int steps) override;
+  void stopEditing() override;
+
 private:
   std::vector<String> options;
   int currentIndex = 0;
   bool selected = false;
   std::function<void()> onChange;
-
-public:
-  MenuItemSelect(String _name, const std::vector<String> &_options, int initialIndex = 0);
-  void nextOption();
-  void prevOption();
-  String getSelectedOption() const;
-  void setCurrentIndex(int _index);
-  int getCurrentIndex() const;
-  void setOnChange(std::function<void()> callback);
-  void toggleSelected();
-  bool isSelected() const;
-  virtual void run() override;
-  virtual void draw(uint8_t _x, uint8_t _y, bool _active) override;
 };
 
+// A scrolling list of MenuItems driven entirely by Input events, with optional
+// nested submenus. Call draw() from the screen's draw and update() from its update.
 class Menu
 {
   friend class MenuItem;
 
-private:
-  uint8_t active;
-  uint8_t maxItemsPerPage = 0;
-  uint8_t numItems;
-  uint8_t numItemsPerPage;
-  uint8_t offsetFromTop;
-  uint8_t topItem = 0;
-
-  MenuSize menuSize = MenuSize::Large;
-  bool manualItemsPerPage = false;
-  Menu *activeSubmenu = nullptr;
-  Menu *parentMenu = nullptr;
-
-  void syncItemsPerPageWithDisplay();
-
 public:
-  std::vector<MenuItem *> items;
-  Menu();
-  Menu(MenuSize _size);
+  explicit Menu(MenuSize size = MenuSize::Medium) : menuSize(size) {}
 
-  void setItemsPerPage(uint8_t _itemsPerPage);
-  uint8_t getItemsPerPage();
+  void addMenuItem(MenuItem *item);
 
-  void setMenuSize(MenuSize _size);
-  MenuSize getMenuSize() const;
+  /** Fixes the rows per page; otherwise derived from the panel. */
+  void setItemsPerPage(uint8_t rows) { manualRowsPerPage = rows; }
+  uint8_t getItemsPerPage() const;
+  void setMenuSize(MenuSize size) { menuSize = size; }
+  MenuSize getMenuSize() const { return menuSize; }
 
-  void setActive(uint8_t _active);
-  uint8_t getActive();
-
+  void setActive(uint16_t index);
+  uint16_t getActive() const { return active; }
   void nextItem();
   void prevItem();
 
   void setActiveSubmenu(Menu *submenu);
-  void clearActiveSubmenu();
-  Menu *getActiveSubmenu();
-  void setParentMenu(Menu *parent);
-  Menu *getParentMenu();
+  void clearActiveSubmenu() { activeSubmenu = nullptr; }
+  Menu *getActiveSubmenu() const { return activeSubmenu; }
+  void setParentMenu(Menu *parent) { parentMenu = parent; }
+  Menu *getParentMenu() const { return parentMenu; }
 
-  void addMenuItem(MenuItem *_item);
   void draw();
   void update();
+  /** Leaves this submenu, or goes back a screen at the top level. */
+  void back();
+
+  std::vector<MenuItem *> items;
+
+private:
+  void handle(const InputEvent &event);
+  void tap(int16_t x, int16_t y);
+  void moveBy(int steps);
+  void ensureActiveVisible();
+  void layoutPage(const std::vector<uint16_t> &visible, uint8_t rows);
+
+  uint16_t active = 0;
+  uint16_t topVisible = 0; // index into the visible-item list
+  uint8_t manualRowsPerPage = 0;
+  MenuSize menuSize;
+  Menu *activeSubmenu = nullptr;
+  Menu *parentMenu = nullptr;
+  int16_t dragAccum = 0;
 };

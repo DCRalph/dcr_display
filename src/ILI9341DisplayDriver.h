@@ -1,50 +1,55 @@
-// Adafruit_ILI9341 (SPI) adapter for the dcr_display `Display` facade.
-//
-// Mirrors TFTDisplayDriver but targets an SPI ILI9341 panel through Adafruit_GFX,
-// so a second (or alternative) Display can be driven with the exact same drawing
-// API as the built-in TFT_eSPI panel.
-//
-// Differences from the TFT_eSPI driver:
-//   * Renders directly to the panel (no sprite/double-buffer), so push() is a
-//     no-op and callers should draw on-demand rather than re-rendering each frame.
-//   * Adafruit_GFX has no text-datum concept, so datums are emulated with
-//     getTextBounds().
-//   * The SPI bus is owned here and exposed via spi(), letting a touch controller
-//     (e.g. XPT2046) share it.
 #pragma once
 
-#include <SPI.h>
+// Compiled only when Adafruit_ILI9341 is present.
+#if __has_include(<Adafruit_ILI9341.h>)
+
 #include <Adafruit_ILI9341.h>
+#include <SPI.h>
 
-#include "Display.h"
+#include "DisplayDriver.h"
 
-struct ILI9341DisplayDriverContext
+// SPI ILI9341 through Adafruit_GFX. Unbuffered: draws straight to the panel, so
+// `Display` redraws it only on change (see Display::setIdleRedrawMs). Owns the
+// SPI bus; a touch controller (e.g. XPT2046) can share it via `spi()`.
+class ILI9341DisplayDriver : public DisplayDriver
 {
-  SPIClass spi;
-  Adafruit_ILI9341 tft;
+public:
+  struct Pins
+  {
+    int8_t cs, dc, rst, sclk, miso, mosi;
+  };
 
-  int8_t pinCS, pinDC, pinRST, pinSCLK, pinMISO, pinMOSI;
+  ILI9341DisplayDriver(uint8_t spiBus, Pins pins, uint8_t rotation = 1, uint32_t spiFrequency = 27000000);
+
+  bool begin() override;
+  uint16_t width() const override;
+  uint16_t height() const override;
+  bool buffered() const override { return false; }
+
+  void drawPixel(int32_t x, int32_t y, uint16_t color) override;
+  void fillRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t color) override;
+  void fillScreen(uint16_t color) override;
+  void drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t color) override;
+  void drawRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t color) override;
+  void drawRoundRect(int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, uint16_t color) override;
+  void fillRoundRect(int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, uint16_t color) override;
+
+  void setFont(TextRole role) override;
+  void setTextScale(uint8_t size) override;
+  void drawText(const char *text, int32_t x, int32_t y, uint16_t fg, int32_t bg) override;
+  int16_t textWidth(const char *text) override;
+  int16_t fontHeight() override;
+
+  SPIClass &spi() { return bus; }
+  Adafruit_ILI9341 &tft() { return panel; }
+
+private:
+  SPIClass bus;
+  Adafruit_ILI9341 panel;
+  Pins pins;
+  uint8_t rotation;
   uint32_t spiFrequency;
-
-  // Emulated text state (Adafruit_GFX tracks size/colour itself, but not datum).
-  uint8_t datum;    // TFT_eSPI-style datum (TL_DATUM, MC_DATUM, ...)
-  uint8_t textSize; // tracked so fontHeight() can report a height
-
-  ILI9341DisplayDriverContext(uint8_t spiBus, int8_t cs, int8_t dc, int8_t rst,
-                              int8_t sclk, int8_t miso, int8_t mosi,
-                              uint32_t freq = 27000000)
-      : spi(spiBus), tft(&spi, dc, cs, rst),
-        pinCS(cs), pinDC(dc), pinRST(rst),
-        pinSCLK(sclk), pinMISO(miso), pinMOSI(mosi),
-        spiFrequency(freq), datum(0), textSize(1) {}
+  uint8_t textScale = 2;
 };
 
-namespace ILI9341DisplayDriver
-{
-  DisplayDriverOps makeOps();
-  DisplayConfig makeConfig(ILI9341DisplayDriverContext *context, uint16_t width,
-                           uint16_t height, uint8_t rotation, uint8_t colorDepth = 16);
-
-  // The driver-owned SPI bus, so a touch controller can share the same wiring.
-  SPIClass &spi(ILI9341DisplayDriverContext *context);
-}
+#endif
