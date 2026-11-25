@@ -1,6 +1,6 @@
 #include "Input.h"
 
-#include <vector>
+#include "Display.h"
 
 void InputQueue::push(const InputEvent &event)
 {
@@ -10,75 +10,65 @@ void InputQueue::push(const InputEvent &event)
 
 namespace
 {
-  std::vector<InputSource *> gSources;
-  InputQueue gQueue;
-  InputQueue gInjected;
-  bool gPolled = false;
-  uint32_t gLastEventMs = 0;
+  InputSet &set()
+  {
+    return Display::active().inputs();
+  }
 }
 
 void Inputs::addSource(InputSource &source)
 {
-  for (InputSource *s : gSources)
-    if (s == &source)
-      return;
-  gSources.push_back(&source);
+  Display::active().addInput(source);
 }
 
 void Inputs::removeSource(InputSource &source)
 {
-  for (auto it = gSources.begin(); it != gSources.end(); ++it)
-  {
-    if (*it == &source)
-    {
-      gSources.erase(it);
-      return;
-    }
-  }
+  Display::active().removeInput(source);
 }
 
 void Inputs::beginFrame()
 {
-  gPolled = false;
-  gQueue.clear();
+  set().polled = false;
+  set().queue.clear();
 }
 
 const InputQueue &Inputs::events()
 {
-  if (!gPolled)
+  InputSet &s = set();
+  if (!s.polled)
   {
-    gPolled = true;
-    gQueue.clear();
-    for (const InputEvent &e : gInjected)
-      gQueue.push(e);
-    gInjected.clear();
-    for (InputSource *s : gSources)
-      s->poll(gQueue);
-    if (gQueue.size() > 0)
-      gLastEventMs = millis();
+    s.polled = true;
+    s.queue.clear();
+    for (const InputEvent &e : s.injected)
+      s.queue.push(e);
+    s.injected.clear();
+    for (InputSource *src : s.sources)
+      src->poll(s.queue);
+    if (s.queue.size() > 0)
+      s.lastEventMs = millis();
   }
-  return gQueue;
+  return s.queue;
 }
 
 bool Inputs::hadEventsThisFrame()
 {
-  return gPolled && gQueue.size() > 0;
+  return set().polled && set().queue.size() > 0;
 }
 
 void Inputs::inject(const InputEvent &event)
 {
-  gInjected.push(event);
+  set().injected.push(event);
 }
 
 bool Inputs::hasPointer()
 {
-  for (InputSource *s : gSources)
-    if (s->isPointer())
+  for (InputSource *src : set().sources)
+    if (src->isPointer())
       return true;
   return false;
 }
 
 uint32_t Inputs::lastEventMs()
 {
-  return gLastEventMs;
+  return set().lastEventMs;
 }

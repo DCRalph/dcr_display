@@ -30,10 +30,10 @@ namespace
 
   void drawLine(const String &text, int16_t y, TextRole role = TextRole::Small)
   {
-    display.setTextRole(role);
-    display.setTextColor(display.theme().text);
-    display.setTextDatum(Datum::TopLeft);
-    display.drawString(text, 2, y);
+    Display::active().setTextRole(role);
+    Display::active().setTextColor(Display::active().theme().text);
+    Display::active().setTextDatum(Datum::TopLeft);
+    Display::active().drawString(text, 2, y);
   }
 
   int16_t top()
@@ -65,8 +65,8 @@ namespace
                                                               &rootDrawing, &rootRedraw, &rootBackground})
         rootMenu.addMenuItem(item);
     }
-    rootPanel = String(display.width()) + "x" + display.height() + " " + display.colorDepth() + "b";
-    rootModes = String(display.driver()->buffered() ? "buf" : "direct") + (Inputs::hasPointer() ? " touch" : "");
+    rootPanel = String(Display::active().width()) + "x" + Display::active().height() + " " + Display::active().colorDepth() + "b";
+    rootModes = String(Display::active().driver()->buffered() ? "buf" : "direct") + (Inputs::hasPointer() ? " touch" : "");
   }
 
   // ---------------------------------------------------------------- menu items
@@ -168,16 +168,16 @@ namespace
 
   void inputDraw()
   {
-    display.setTextRole(TextRole::Small);
-    const int16_t lh = display.fontHeight() + 1;
+    Display::active().setTextRole(TextRole::Small);
+    const int16_t lh = Display::active().fontHeight() + 1;
     drawLine("Back / 3 clicks to exit", top());
-    const int16_t rows = (display.height() - top() - lh) / lh;
+    const int16_t rows = (Display::active().height() - top() - lh) / lh;
     for (int16_t i = 0; i < rows && i < static_cast<int16_t>(gLogCount); i++)
       drawLine(gLog[i], top() + lh * (i + 1));
     if (gPointerX >= 0)
     {
-      display.drawLine(gPointerX - 6, gPointerY, gPointerX + 6, gPointerY, display.theme().accent);
-      display.drawLine(gPointerX, gPointerY - 6, gPointerX, gPointerY + 6, display.theme().accent);
+      Display::active().drawLine(gPointerX - 6, gPointerY, gPointerX + 6, gPointerY, Display::active().theme().accent);
+      Display::active().drawLine(gPointerX, gPointerY - 6, gPointerX, gPointerY + 6, Display::active().theme().accent);
     }
   }
 
@@ -187,7 +187,7 @@ namespace
     {
       if (e.kind == InputKind::Back || (e.kind == InputKind::Select && e.rawClicks == 3))
       {
-        screenManager.back();
+        Display::active().screens().back();
         return;
       }
       if (e.kind >= InputKind::Tap)
@@ -210,11 +210,11 @@ namespace
   String gChoice = "-";
   MenuItemBack popupsBack;
   MenuItemAction infoPopupItem("Info", 1, []()
-                               { screenManager.showPopup(new Popup("Info", "A plain popup. Select, back or tap closes it, and long text wraps inside the box.")); });
+                               { Display::active().screens().showPopup(new Popup("Info", "A plain popup. Select, back or tap closes it, and long text wraps inside the box.")); });
   MenuItemAction autoPopupItem("Auto close", 1, []()
-                               { screenManager.showPopup(new AutoClosePopup("Auto", "Closes in 3 s", 3000)); });
+                               { Display::active().screens().showPopup(new AutoClosePopup("Auto", "Closes in 3 s", 3000)); });
   MenuItemAction choicePopupItem("Choice", 1, []()
-                                 { screenManager.showPopup(new ChoicePopup("Pick", "Which one?", {"No", "Yes", "Maybe"},
+                                 { Display::active().screens().showPopup(new ChoicePopup("Pick", "Which one?", {"No", "Yes", "Maybe"},
                                                                            [](int choice)
                                                                            { gChoice = choice < 0 ? String("cancel") : String(choice); })); });
   MenuItemString choiceResultItem("Chose", &gChoice);
@@ -223,13 +223,13 @@ namespace
                                  xTaskCreate([](void *)
                                              {
                                                vTaskDelay(pdMS_TO_TICKS(800));
-                                               screenManager.showPopup(new AutoClosePopup("Task", "Shown from another task", 2000));
+                                               Display::active().screens().showPopup(new AutoClosePopup("Task", "Shown from another task", 2000));
                                                vTaskDelete(nullptr); },
                                              "uiTestPopup", 3072, nullptr, 1, nullptr); });
   MenuItemAction replacePopupItem("Replace", 1, []()
                                   {
-                                    screenManager.showPopup(new Popup("First", "You should never see this"));
-                                    screenManager.showPopup(new Popup("Second", "Replaced the first before it drew")); });
+                                    Display::active().screens().showPopup(new Popup("First", "You should never see this"));
+                                    Display::active().screens().showPopup(new Popup("Second", "Replaced the first before it drew")); });
 
   void popupsEnter()
   {
@@ -255,7 +255,7 @@ namespace
       Button("+", []()
              { gCount++; }),
       Button("Back", []()
-             { screenManager.back(); }),
+             { Display::active().screens().back(); }),
   };
   FocusGroup buttonGroup;
   bool gButtonsBuilt = false;
@@ -269,11 +269,11 @@ namespace
         buttonGroup.add(b);
       buttonGroup.setColumns(3);
     }
-    display.setTextRole(TextRole::Small);
-    const int16_t y0 = top() + display.fontHeight() + 4;
+    Display::active().setTextRole(TextRole::Small);
+    const int16_t y0 = top() + Display::active().fontHeight() + 4;
     const int16_t gap = 3;
-    const int16_t w = (display.width() - 4 * gap) / 3;
-    const int16_t h = (display.height() - y0 - 3 * gap) / 2;
+    const int16_t w = (Display::active().width() - 4 * gap) / 3;
+    const int16_t h = (Display::active().height() - y0 - 3 * gap) / 2;
     for (int i = 0; i < 6; i++)
       buttons[i].bounds = Rect{static_cast<int16_t>(gap + (i % 3) * (w + gap)),
                                static_cast<int16_t>(y0 + gap + (i / 3) * (h + gap)), w, h};
@@ -291,7 +291,7 @@ namespace
     {
       if (e.kind == InputKind::Back)
       {
-        screenManager.back();
+        Display::active().screens().back();
         return;
       }
     }
@@ -316,12 +316,12 @@ namespace
           gTyped.remove(gTyped.length() - 1);
       };
       keyboard.onDone = []()
-      { screenManager.back(); };
+      { Display::active().screens().back(); };
       keyboard.onCancel = keyboard.onDone;
     }
-    display.setTextRole(TextRole::Small);
-    const int16_t y = top() + display.fontHeight() + 4;
-    keyboard.setBounds(Rect{0, y, static_cast<int16_t>(display.width()), static_cast<int16_t>(display.height() - y)});
+    Display::active().setTextRole(TextRole::Small);
+    const int16_t y = top() + Display::active().fontHeight() + 4;
+    keyboard.setBounds(Rect{0, y, static_cast<int16_t>(Display::active().width()), static_cast<int16_t>(Display::active().height() - y)});
   }
 
   void keyboardDraw()
@@ -338,40 +338,40 @@ namespace
   // ---------------------------------------------------------------- drawing
   void drawingDraw()
   {
-    const Theme &t = display.theme();
-    const int16_t W = display.width(), H = display.height(), T = top();
+    const Theme &t = Display::active().theme();
+    const int16_t W = Display::active().width(), H = Display::active().height(), T = top();
     const int16_t half = W / 2;
     const int16_t areaH = H - T;
     const int16_t cell = min<int16_t>(half / 3, areaH / 2) - 2;
 
     // Shapes, two rows of three on the left half.
     int16_t x = 1, y = T + 1;
-    display.drawLine(x, y, x + cell, y + cell, t.text);
-    display.drawLine(x, y + cell, x + cell, y, t.accent);
+    Display::active().drawLine(x, y, x + cell, y + cell, t.text);
+    Display::active().drawLine(x, y + cell, x + cell, y, t.accent);
     x += cell + 2;
-    display.drawRect(x, y, cell, cell, t.text);
-    display.fillRect(x + cell / 4, y + cell / 4, cell / 2, cell / 2, t.accent);
+    Display::active().drawRect(x, y, cell, cell, t.text);
+    Display::active().fillRect(x + cell / 4, y + cell / 4, cell / 2, cell / 2, t.accent);
     x += cell + 2;
-    display.drawRoundRect(x, y, cell, cell, cell / 4, t.text);
+    Display::active().drawRoundRect(x, y, cell, cell, cell / 4, t.text);
     x = 1;
     y += cell + 2;
-    display.fillRoundRect(x, y, cell, cell, cell / 4, t.highlight);
+    Display::active().fillRoundRect(x, y, cell, cell, cell / 4, t.highlight);
     x += cell + 2;
-    display.drawSmoothArc(x + cell / 2, y + cell / 2, cell / 2, cell / 3, 45, 315, t.accent, t.background, true);
+    Display::active().drawSmoothArc(x + cell / 2, y + cell / 2, cell / 2, cell / 3, 45, 315, t.accent, t.background, true);
     x += cell + 2;
     for (int16_t i = 0; i < cell; i += 3)
-      display.drawPixel(x + i, y + (i * i) / max<int16_t>(cell, 1), t.text);
+      Display::active().drawPixel(x + i, y + (i * i) / max<int16_t>(cell, 1), t.text);
 
     // Datums: nine labels anchored on one box; each should sit on its own corner/edge/centre.
     const int16_t bx = half + 2, by = T + 1, bw = W - half - 4, bh = areaH - 2;
-    display.drawRect(bx, by, bw, bh, t.mutedText);
-    display.setTextRole(TextRole::Small);
-    display.setTextColor(t.text);
+    Display::active().drawRect(bx, by, bw, bh, t.mutedText);
+    Display::active().setTextRole(TextRole::Small);
+    Display::active().setTextColor(t.text);
     static const char *const labels[] = {"TL", "TC", "TR", "ML", "MC", "MR", "BL", "BC", "BR"};
     for (uint8_t d = 0; d < 9; d++)
     {
-      display.setTextDatum(d);
-      display.drawString(labels[d], bx + (d % 3) * bw / 2, by + (d / 3) * bh / 2);
+      Display::active().setTextDatum(d);
+      Display::active().drawString(labels[d], bx + (d % 3) * bw / 2, by + (d / 3) * bh / 2);
     }
 
     // Theme swatches along the bottom of the left half.
@@ -381,8 +381,8 @@ namespace
     if (sy > y + cell)
       for (int i = 0; i < 7; i++)
       {
-        display.fillRect(1 + i * sw, sy, sw - 1, sw, swatches[i]);
-        display.drawRect(1 + i * sw, sy, sw - 1, sw, t.text);
+        Display::active().fillRect(1 + i * sw, sy, sw - 1, sw, swatches[i]);
+        Display::active().drawRect(1 + i * sw, sy, sw - 1, sw, t.text);
       }
   }
 
@@ -391,7 +391,7 @@ namespace
     for (const InputEvent &e : Inputs::events())
       if (isExit(e) || e.kind == InputKind::Select)
       {
-        screenManager.back();
+        Display::active().screens().back();
         return;
       }
   }
@@ -407,8 +407,8 @@ namespace
   void redrawDraw()
   {
     gDraws++;
-    display.setTextRole(TextRole::Small);
-    const int16_t lh = display.fontHeight() + 2;
+    Display::active().setTextRole(TextRole::Small);
+    const int16_t lh = Display::active().fontHeight() + 2;
     drawLine("Idle redraw every 1 s", top() + 1);
     drawLine("Turn/press: redraws now", top() + 1 + lh);
     drawLine("Draws " + String(gDraws) + "  Updates " + String(gUpdates), top() + 1 + 2 * lh);
@@ -457,7 +457,7 @@ namespace
   {
     gStepsShown = gSteps;
     gOverrunsShown = gOverruns;
-    gTaskState = screenManager.isBackgroundTaskActive(&UiTest::BackgroundScreen) ? "running" : "stopped";
+    gTaskState = Display::active().screens().isBackgroundTaskActive(&UiTest::BackgroundScreen) ? "running" : "stopped";
     bgMenu.update();
   }
 

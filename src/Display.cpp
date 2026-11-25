@@ -8,8 +8,58 @@
 #define LOG_TAG "DISPLAY"
 #include <dcr_Logger.h>
 
+namespace
+{
+  Display *gActive = &display;
+
+  // Makes a display active for one scope, restoring the previous on exit.
+  struct ActiveScope
+  {
+    Display *previous;
+    explicit ActiveScope(Display *d) : previous(gActive) { gActive = d; }
+    ~ActiveScope() { gActive = previous; }
+  };
+}
+
+Display &Display::active()
+{
+  return *gActive;
+}
+
+ScreenManager &Display::screens() const
+{
+  return *screenManager;
+}
+
+void Display::addInput(InputSource &source)
+{
+  for (InputSource *s : inputSet.sources)
+    if (s == &source)
+      return;
+  inputSet.sources.push_back(&source);
+}
+
+void Display::removeInput(InputSource &source)
+{
+  for (auto it = inputSet.sources.begin(); it != inputSet.sources.end(); ++it)
+  {
+    if (*it == &source)
+    {
+      inputSet.sources.erase(it);
+      return;
+    }
+  }
+}
+
+void Display::setMenuMetrics(const MenuStyle::Metrics &m)
+{
+  metrics = m;
+  dirty = true;
+}
+
 bool Display::begin(DisplayDriver &driver, ScreenManager *manager)
 {
+  ActiveScope scope(this);
   panel = &driver;
   screenManager = manager != nullptr ? manager : &::screenManager;
 
@@ -24,7 +74,7 @@ bool Display::begin(DisplayDriver &driver, ScreenManager *manager)
   const uint8_t depth = panel->colorDepth();
   displayProfile = DisplayProfile::forPanel(w, h, depth);
   currentTheme = Theme::forColorDepth(depth);
-  MenuStyle::setMetrics(MenuStyle::Metrics::forPanel(w, h, depth));
+  metrics = MenuStyle::Metrics::forPanel(w, h, depth);
   idleRedrawMs = panel->buffered() ? 0 : 1000;
   textFg = currentTheme.text;
   panel->setFont(TextRole::Body);
@@ -321,6 +371,7 @@ bool Display::render()
 {
   if (!ready || !screenManager)
     return false;
+  ActiveScope scope(this);
 
   Inputs::beginFrame();
 

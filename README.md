@@ -22,7 +22,7 @@ evaluates those guards before your panel library is on the include path.
 | Driver | Backend | Notes |
 | --- | --- | --- |
 | `TFTDisplayDriver` | `bodmer/TFT_eSPI` | Full-frame sprite; draws direct if the sprite will not fit |
-| `ILI9341DisplayDriver` | `adafruit/Adafruit ILI9341` | Unbuffered, redraws only on change |
+| `ILI9341DisplayDriver` | `adafruit/Adafruit ILI9341` | Optional PSRAM frame buffer; unbuffered redraws only on change |
 | `U8g2DisplayDriver` | `olikraus/U8g2` | Any mono U8g2 panel, full-buffer (`_F_`) classes only |
 
 A new panel is a `DisplayDriver` subclass. Implement `begin`, `width`, `height`,
@@ -89,6 +89,27 @@ and left or back goes back. While a number or select item is being edited,
 navigation changes its value instead. With a pointer source attached, rows grow
 to `minTouchRowHeight`, a tap activates a row, a drag scrolls, and rows being
 edited show `-`/`+` targets.
+
+## Several displays
+
+Each `Display` has its own `ScreenManager`, menu metrics and input sources.
+Menus, popups and widgets draw on, and navigate, whichever display is
+rendering them (`Display::active()`), so the same screen code runs on either.
+
+```cpp
+Display touchDisplay;
+ScreenManager touchScreens;
+
+display.begin(lcdDriver);                         // global display + screenManager
+display.addInput(buttons);
+touchDisplay.begin(ili9341Driver, &touchScreens);
+touchDisplay.addInput(touch);
+
+void loop() { display.render(); touchDisplay.render(); }  // one task
+```
+
+`ILI9341DisplayDriver` takes `buffered = true` to draw into a PSRAM frame and
+push it in one burst. The esp32-remote `Dual Screen` project is a full example.
 
 ## Rendering
 
