@@ -1141,7 +1141,11 @@ void Menu::draw()
     if (t.oneBit)
       d.drawRoundRect(rowX, static_cast<int16_t>(cardY), rowW, visibleCardH, 3, t.text);
     else
+    {
+      // The outline keeps the card's edge on panels that wash out light fills.
       Draw::raised(rowX, static_cast<int16_t>(cardY), rowW, visibleCardH, MenuStyle::kGroupRadius, t.surface);
+      d.drawRoundRect(rowX, static_cast<int16_t>(cardY), rowW, visibleCardH, MenuStyle::kGroupRadius, t.border);
+    }
   }
 
   // Highlight, or the editing tint, at the active row.
