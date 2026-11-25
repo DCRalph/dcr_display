@@ -13,18 +13,26 @@ XPT2046_Touchscreen touch(33);
 String typed;
 Keyboard keyboard;
 
-TouchInput touchInput({
-    .read = [](int16_t &x, int16_t &y)
-    {
-      if (!touch.touched())
-        return false;
-      // Raw 200-3900 to panel pixels; calibrate for your panel.
-      const TS_Point p = touch.getPoint();
-      x = map(p.x, 200, 3900, 0, display.width());
-      y = map(p.y, 200, 3900, 0, display.height());
-      return true;
-    },
-});
+// Filtering for a resistive XPT2046: ride out false lifts, pressure hysteresis,
+// and drop readings off the panel.
+TouchInput touchInput([]
+                      {
+  TouchInput::Config c;
+  c.readSample = [](TouchSample &s)
+  {
+    const TS_Point p = touch.getPoint(); // z is 0 below the library's own threshold
+    // Raw 200-3900 to panel pixels; calibrate for your panel.
+    s.x = map(p.x, 200, 3900, 0, display.width());
+    s.y = map(p.y, 200, 3900, 0, display.height());
+    s.z = p.z;
+    return p.z > 0;
+  };
+  c.releasePolls = 5;
+  c.startPressure = 600;
+  c.holdPressure = 300;
+  c.width = 320;
+  c.height = 240;
+  return c; }());
 
 void keyboardDraw()
 {

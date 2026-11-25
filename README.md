@@ -81,6 +81,20 @@ Click counts follow ClickButton: 1 single, 2 double, negative for a long press.
 `multiClickSelects`, a double click on up/down selects, for two-button devices.
 Menu items bind actions to click counts with `addFunc(clicks, fn)`.
 
+Resistive panels need filtering. `TouchInput::Config` turns each part on
+separately, and the defaults filter nothing:
+
+| Option | Effect | XPT2046 |
+| --- | --- | --- |
+| `releasePolls` | empty polls before a press counts as lifted; rides out false lifts | 5 |
+| `startPressure` / `holdPressure` | pressure (via `readSample`) to start / keep a press | 600 / 300 |
+| `agreePx` | two samples per poll must agree; noise mid-press keeps the last position | 20 |
+| `width` / `height` | readings off the panel are noise | panel size |
+
+`touch.sample()` between frames catches taps shorter than a frame, and
+`touch.suppressUntilRelease()` swallows the press in progress, e.g. after it
+changed screens.
+
 Sources are polled lazily, on the first query in a frame. A screen that reads
 its buttons or encoder directly still works while no menu is asking.
 

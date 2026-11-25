@@ -80,25 +80,65 @@ private:
   uint32_t heldSinceMs_ = 0, lastRepeatMs_ = 0;
 };
 
+// One touch reading. `z` is pressure in the controller's raw units, 0 if unknown.
+struct TouchSample
+{
+  int16_t x = 0, y = 0;
+  uint16_t z = 0;
+};
+
+// Pointer input with the filtering a resistive panel needs. The defaults do no
+// filtering; the README has values that suit an XPT2046.
 class TouchInput : public InputSource
 {
 public:
   struct Config
   {
-    // Fill x, y in panel pixels and return true while touched.
+    // Fill x, y in panel pixels and return true while touched. Or set readSample
+    // instead, to supply pressure for startPressure/holdPressure.
     std::function<bool(int16_t &x, int16_t &y)> read;
-    uint8_t tapSlop = 10;       // max travel in px for a tap
+    std::function<bool(TouchSample &sample)> readSample;
+
+    uint8_t tapSlop = 10; // max travel in px for a tap
     uint16_t tapMaxMs = 700;
+
+    // Empty polls (one per frame) before a press counts as lifted. Above 1, a
+    // press survives brief dropouts at its last position instead of ending.
+    uint8_t releasePolls = 1;
+    // readSample only: pressure above startPressure begins a press, above
+    // holdPressure keeps one going. 0 disables each check.
+    uint16_t startPressure = 0;
+    uint16_t holdPressure = 0;
+    // >0: take two samples per poll. If they differ by more than this many px
+    // the reading is noise: it is ignored, or mid-press keeps the last position.
+    uint8_t agreePx = 0;
+    // Readings outside width x height are treated as noise. 0 disables.
+    uint16_t width = 0, height = 0;
   };
 
   explicit TouchInput(Config config) : config_(std::move(config)) {}
   void poll(InputQueue &queue) override;
   bool isPointer() const override { return true; }
 
+  /** Call between frames (e.g. between two displays' renders) to catch taps shorter than a frame. */
+  void sample();
+  /** Swallow the current press until the finger lifts, e.g. after it changed screens. */
+  void suppressUntilRelease() { suppressed_ = true; }
+
 private:
+  bool readOnce(TouchSample &s);
+  bool readFiltered(int16_t &x, int16_t &y);
+  bool readDebounced(int16_t &x, int16_t &y);
+
   Config config_;
   bool down_ = false;
   int16_t startX_ = 0, startY_ = 0, lastX_ = 0, lastY_ = 0;
+  int16_t goodX_ = 0, goodY_ = 0; // last reading that passed the filters
   bool moved_ = false;
   uint32_t downMs_ = 0;
+  uint8_t missedPolls_ = 0;
+  bool suppressed_ = false;
+  bool hiddenPress_ = false; // the press began while suppressed
+  bool midSeen_ = false;
+  int16_t midX_ = 0, midY_ = 0;
 };
