@@ -56,12 +56,34 @@ public:
   void setRoleScale(TextRole role, uint8_t scale);
 #endif
 
-  TFT_eSPI &tft() { return panel; }
-  TFT_eSprite &sprite() { return frame; }
+  /** Direct access for app drawing. Taking one forgets the applied font, so the next role is reapplied. */
+  TFT_eSPI &tft()
+  {
+    appTouched();
+    return panel;
+  }
+  TFT_eSprite &sprite()
+  {
+    appTouched();
+    return frame;
+  }
   /** Where drawing lands: the sprite, or the panel in fallback mode. */
-  TFT_eSPI &canvas() { return spriteReady ? static_cast<TFT_eSPI &>(frame) : panel; }
+  TFT_eSPI &canvas()
+  {
+    appTouched();
+    return target();
+  }
+  void resync() override { diff.invalidate(); }
 
 protected:
+  TFT_eSPI &target() { return spriteReady ? static_cast<TFT_eSPI &>(frame) : panel; }
+  // App code may change the font or set a TFT_eSPI viewport through the accessors:
+  // reapply the font next time, and from then on fill through TFT_eSPI, which clips.
+  void appTouched()
+  {
+    appliedFont = nullptr;
+    rawFills = false;
+  }
   virtual void initPanel();
   virtual void pushFrame();
   /** Send one changed region of the sprite to the same place on the panel. */
@@ -84,7 +106,9 @@ protected:
     int8_t ascent, descent; // glyph extent above/below the baseline, from the font
   };
   RoleFont roleFonts[static_cast<uint8_t>(TextRole::RoleCount)];
-  const RoleFont *currentFont = nullptr; // nullptr while app code uses setTextScale
+  const RoleFont *currentFont = nullptr; // role in use (metrics); nullptr after setTextScale
+  const RoleFont *appliedFont = nullptr; // role last installed in TFT_eSPI, to skip rescans
+  bool rawFills = true;                  // fills write the frame directly (no app viewport possible)
 };
 
 #endif

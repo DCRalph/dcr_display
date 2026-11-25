@@ -101,16 +101,31 @@ void DisplayDriver::drawCircleQuadrants(int32_t cx, int32_t cy, int32_t r, uint8
   }
 }
 
-// halves: 1 top, 2 bottom. Each scanline spans `stretch` extra pixels between the arcs.
-void DisplayDriver::fillCircleHalves(int32_t cx, int32_t cy, int32_t r, uint8_t halves, int32_t stretch, uint16_t color)
+// TFT_eSPI's corner rasteriser, ported so buffered drivers keep its exact shapes
+// while drawing through their own (fast) fillRect. corners: 1 bottom, 2 top.
+void DisplayDriver::fillCircleHelper(int32_t x0, int32_t y0, int32_t r, uint8_t corners, int32_t delta, uint16_t color)
 {
-  for (int32_t dy = 0; dy <= r; dy++)
+  int32_t f = 1 - r, ddF_x = 1, ddF_y = -r - r, y = 0;
+  delta++;
+  while (y < r)
   {
-    const int32_t dx = static_cast<int32_t>(sqrtf(static_cast<float>(r * r - dy * dy)) + 0.5f);
-    if (halves & 1)
-      fillRect(cx - dx, cy - dy, 2 * dx + 1 + stretch, 1, color);
-    if ((halves & 2) && dy > 0)
-      fillRect(cx - dx, cy + dy, 2 * dx + 1 + stretch, 1, color);
+    if (f >= 0)
+    {
+      if (corners & 0x1)
+        fillRect(x0 - y, y0 + r, y + y + delta, 1, color);
+      if (corners & 0x2)
+        fillRect(x0 - y, y0 - r, y + y + delta, 1, color);
+      r--;
+      ddF_y += 2;
+      f += ddF_y;
+    }
+    y++;
+    ddF_x += 2;
+    f += ddF_x;
+    if (corners & 0x1)
+      fillRect(x0 - r, y0 + y, r + r + delta, 1, color);
+    if (corners & 0x2)
+      fillRect(x0 - r, y0 - y, r + r + delta, 1, color);
   }
 }
 
@@ -135,18 +150,13 @@ void DisplayDriver::drawRoundRect(int32_t x, int32_t y, int32_t w, int32_t h, in
 void DisplayDriver::fillRoundRect(int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, uint16_t color)
 {
   r = clampRadius(r, w, h);
-  if (r == 0)
-  {
-    fillRect(x, y, w, h, color);
-    return;
-  }
-  fillRect(x, y + r, w, h - 2 * r, color);
-  const int32_t stretch = w - 2 * r - 1;
-  fillCircleHalves(x + r, y + r, r, 1, stretch, color);
-  fillCircleHalves(x + r, y + h - r - 1, r, 2, stretch, color);
+  fillRect(x, y + r, w, h - r - r, color);
+  fillCircleHelper(x + r, y + h - r - 1, r, 1, w - r - r - 1, color);
+  fillCircleHelper(x + r, y + r, r, 2, w - r - r - 1, color);
 }
 
-// Pixel-scan fallback: correct but slow (O(r^2)), and not anti-aliased.
+// Ring drawn as horizontal spans: a full ring is two fills per row; an arc tests
+// angles only inside the ring, never the whole bounding box. Not anti-aliased.
 void DisplayDriver::drawSmoothArc(int32_t x, int32_t y, int32_t r, int32_t ir, int32_t startAngle, int32_t endAngle,
                                   uint16_t fgColor, uint16_t, bool)
 {
@@ -155,27 +165,54 @@ void DisplayDriver::drawSmoothArc(int32_t x, int32_t y, int32_t r, int32_t ir, i
   startAngle = ((startAngle % 360) + 360) % 360;
   endAngle = ((endAngle % 360) + 360) % 360;
   const bool full = startAngle == endAngle;
-  const int32_t r2 = r * r, ir2 = ir * ir;
+  const int64_t r2 = static_cast<int64_t>(r) * r, ir2 = static_cast<int64_t>(ir) * ir;
 
   for (int32_t dy = -r; dy <= r; dy++)
   {
-    for (int32_t dx = -r; dx <= r; dx++)
+    // Float estimates, corrected with exact integer tests: outer is the widest dx with
+    // dx^2 <= r^2 - dy^2, inner the narrowest with dx^2 >= ir^2 - dy^2.
+    const int64_t dy2 = static_cast<int64_t>(dy) * dy;
+    const int64_t outerSq = r2 - dy2;
+    int64_t outer = static_cast<int64_t>(sqrtf(static_cast<float>(outerSq)));
+    while (outer > 0 && outer * outer > outerSq)
+      outer--;
+    while ((outer + 1) * (outer + 1) <= outerSq)
+      outer++;
+    const int64_t innerSq = ir2 - dy2;
+    int64_t inner = -1;
+    if (innerSq > 0)
     {
-      const int32_t d2 = dx * dx + dy * dy;
-      if (d2 > r2 || d2 < ir2)
-        continue;
-      if (!full)
+      inner = static_cast<int64_t>(ceilf(sqrtf(static_cast<float>(innerSq))));
+      while (inner > 0 && (inner - 1) * (inner - 1) >= innerSq)
+        inner--;
+      while (inner * inner < innerSq)
+        inner++;
+    }
+
+    if (full)
+    {
+      if (inner < 0)
+        fillRect(x - static_cast<int32_t>(outer), y + dy, static_cast<int32_t>(2 * outer + 1), 1, fgColor);
+      else if (inner <= outer)
       {
-        // 0 deg at six o'clock, increasing clockwise.
-        float a = atan2f(static_cast<float>(-dx), static_cast<float>(dy)) * 57.29578f;
-        if (a < 0)
-          a += 360.0f;
-        const bool inside = startAngle < endAngle ? (a >= startAngle && a <= endAngle)
-                                                  : (a >= startAngle || a <= endAngle);
-        if (!inside)
-          continue;
+        fillRect(x - static_cast<int32_t>(outer), y + dy, static_cast<int32_t>(outer - inner + 1), 1, fgColor);
+        fillRect(x + static_cast<int32_t>(inner), y + dy, static_cast<int32_t>(outer - inner + 1), 1, fgColor);
       }
-      drawPixel(x + dx, y + dy, fgColor);
+      continue;
+    }
+
+    for (int32_t dx = static_cast<int32_t>(-outer); dx <= outer; dx++)
+    {
+      if (inner >= 0 && abs(dx) < inner)
+        continue;
+      // 0 deg at six o'clock, increasing clockwise.
+      float a = atan2f(static_cast<float>(-dx), static_cast<float>(dy)) * 57.29578f;
+      if (a < 0)
+        a += 360.0f;
+      const bool inside = startAngle < endAngle ? (a >= startAngle && a <= endAngle)
+                                                : (a >= startAngle || a <= endAngle);
+      if (inside)
+        drawPixel(x + dx, y + dy, fgColor);
     }
   }
 }

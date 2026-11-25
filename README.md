@@ -132,15 +132,23 @@ push it in one burst. The esp32-remote `Dual Screen` project is a full example.
 
 ## Performance
 
-Buffered drivers (TFT_eSPI sprite, ILI9341 canvas) push only what changed:
-`FrameDiff` hashes each row in 40 px cells against what the panel shows and
-sends changed cells per two-row band, each band only as wide as its changes.
-A static screen pushes nothing; a ticking clock pushes a few cells. Turn it off
-with `driver.setPartialPush(false)` before `begin`. A custom driver can use
-`FrameDiff` the same way (see oled 3's AMOLED driver in esp32-remote).
-
-A screen whose `draw()` starts with `display.clearScreen()` skips the
-library's own pre-clear from its second frame on, saving one full-frame fill.
+- **Only what changed is sent.** Buffered TFT_eSPI and ILI9341 drivers hash
+  the frame in 40 px cells (`FrameDiff`) and push changed bands. U8g2 compares
+  each 8-pixel page with what the panel shows and sends changed pages only: a
+  full 128x64 frame is about 25 ms of I2C at 400 kHz, a static one is nothing.
+  `setPartialPush(false)` on any of them turns this off.
+- **Fast fills.** Sprite and canvas fills (`fillRect`, `fillScreen`, and the
+  rounded rects built from them) write 32-bit words straight into the frame
+  (`FastFill`), not one pixel at a time.
+- **No per-frame allocation.** Menus reuse one row list and word wrapping uses
+  a stack buffer, so a steady frame does not touch the heap.
+- **Fonts are switched only when the role changes**, since TFT_eSPI rescans the
+  whole font on every `setFreeFont`.
+- **Pre-clear skipping.** A screen whose `draw()` starts with
+  `display.clearScreen()` skips the library's own clear from its second frame.
+- **Pace your loop.** Render from a loop that sleeps out the rest of each frame
+  (`vTaskDelay` of the time left), not one that spins or uses `xTaskDelayUntil`,
+  which runs catch-up frames back to back after a slow one.
 
 `display.stats()` reports fps, draw and push time, the share of each frame
 pushed, and load for the last second.

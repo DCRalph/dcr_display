@@ -276,7 +276,88 @@ int Display::wrapTextInBounds(const String &text, int x, int y, int width, int h
   return drawWrapped(text, x, y, width, height, gap, color, textAlignment);
 }
 
+// Word wrap without heap allocation: popups re-wrap their message every frame.
+// The same tokens and rules as drawWrappedLong, which takes text too long for
+// the stack buffer; a line is never longer than the text, so it always fits.
 int Display::drawWrapped(const String &text, int x, int y, int width, int height, int gap, uint16_t color,
+                         int textAlignment)
+{
+  char line[160];
+  const int len = text.length();
+  if (len >= static_cast<int>(sizeof(line)))
+    return drawWrappedLong(text, x, y, width, height, gap, color, textAlignment);
+
+  setTextColor(color);
+  setTextDatum(textAlignment <= 8 ? textAlignment % 3 : 0);
+
+  const char *s = text.c_str();
+  const int lineHeight = fontHeight() + gap;
+  int lines = 0;
+  int lineLen = 0;
+  line[0] = '\0';
+
+  auto flush = [&]() -> bool
+  {
+    if (lineHeight > 0 && (lines + 1) * lineHeight - gap > height && lines > 0)
+      return false;
+    drawString(line, x, y + lines * lineHeight);
+    lines++;
+    lineLen = 0;
+    line[0] = '\0';
+    return true;
+  };
+
+  int i = 0;
+  while (i <= len)
+  {
+    int end = i;
+    while (end < len && s[end] != ' ' && s[end] != '\n')
+      end++;
+    const int wordLen = end - i;
+    if (wordLen == 0 && end < len && s[end] == ' ')
+    {
+      i = end + 1;
+      continue;
+    }
+
+    // candidate = line, a space if the line is not empty, then the word.
+    char candidate[sizeof(line)];
+    int candLen = 0;
+    if (lineLen)
+    {
+      memcpy(candidate, line, lineLen);
+      candidate[lineLen] = ' ';
+      candLen = lineLen + 1;
+    }
+    memcpy(candidate + candLen, s + i, wordLen);
+    candLen += wordLen;
+    candidate[candLen] = '\0';
+
+    if (lineLen && textWidth(candidate) > width)
+    {
+      if (!flush())
+        return lines;
+      memcpy(line, s + i, wordLen);
+      lineLen = wordLen;
+      line[lineLen] = '\0';
+    }
+    else
+    {
+      memcpy(line, candidate, candLen + 1);
+      lineLen = candLen;
+    }
+
+    if (end >= len || s[end] == '\n')
+    {
+      if (!flush())
+        return lines;
+    }
+    i = end + 1;
+  }
+  return lines;
+}
+
+int Display::drawWrappedLong(const String &text, int x, int y, int width, int height, int gap, uint16_t color,
                          int textAlignment)
 {
   setTextColor(color);

@@ -30,6 +30,8 @@ public:
   virtual void push() {}
   /** Share of the frame the last push() sent, 0-100. Partial-push drivers report less. */
   virtual uint8_t lastPushPercent() const { return 100; }
+  /** Make the next push() send the whole frame, e.g. after drawing to the panel directly. */
+  virtual void resync() {}
 
   virtual void drawPixel(int32_t x, int32_t y, uint16_t color) = 0;
   virtual void fillRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t color) = 0;
@@ -55,5 +57,5 @@ public:
 
 protected:
   void drawCircleQuadrants(int32_t cx, int32_t cy, int32_t r, uint8_t quadrants, uint16_t color);
-  void fillCircleHalves(int32_t cx, int32_t cy, int32_t r, uint8_t halves, int32_t stretch, uint16_t color);
+  void fillCircleHelper(int32_t x0, int32_t y0, int32_t r, uint8_t corners, int32_t delta, uint16_t color);
 };

@@ -52,11 +52,23 @@ public:
   void setRoleFont(TextRole role, const GFXfont *font, uint8_t scale = 1);
 
   SPIClass &spi() { return bus; }
-  Adafruit_ILI9341 &tft() { return panel; }
+  /** Direct access for app drawing. Taking one forgets the applied font, so the next role is reapplied. */
+  Adafruit_ILI9341 &tft()
+  {
+    appliedFont = nullptr;
+    return panel;
+  }
   /** Where drawing lands: the canvas when buffered, else the panel. */
-  Adafruit_GFX &gfx() { return canvas ? static_cast<Adafruit_GFX &>(*canvas) : panel; }
+  Adafruit_GFX &gfx()
+  {
+    appliedFont = nullptr;
+    return target();
+  }
+  void resync() override { diff.invalidate(); }
 
 private:
+  Adafruit_GFX &target() { return canvas ? static_cast<Adafruit_GFX &>(*canvas) : panel; }
+
   SPIClass bus;
   Adafruit_ILI9341 panel;
   GFXcanvas16 *canvas = nullptr;
@@ -75,7 +87,8 @@ private:
     int8_t ascent, descent;
   };
   RoleFont roleFonts[static_cast<uint8_t>(TextRole::RoleCount)];
-  const RoleFont *currentFont = nullptr;
+  const RoleFont *currentFont = nullptr; // role in use (metrics); nullptr after setTextScale
+  const RoleFont *appliedFont = nullptr; // role last installed in GFX, to skip redundant switches
 };
 
 #endif
