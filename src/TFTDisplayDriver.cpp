@@ -155,15 +155,21 @@ void TFTDisplayDriver::setRoleFont(TextRole role, const GFXfont *font, uint8_t s
     }
   }
   roleFonts[i] = f;
-  appliedFont = nullptr; // the role may be the one installed: reapply on next use
+  appliedFont = nullptr;
+  if (currentFont == &roleFonts[i])
+    setFont(role); // the active role: install the new font now so glyphs and metrics agree
 }
 #else
 void TFTDisplayDriver::setRoleScale(TextRole role, uint8_t scale)
 {
   const uint8_t i = static_cast<uint8_t>(role);
   if (i < sizeof(roleFonts) / sizeof(roleFonts[0]))
+  {
     roleFonts[i] = RoleFont{nullptr, static_cast<uint8_t>(scale ? scale : 1), 0, 0};
-  appliedFont = nullptr;
+    appliedFont = nullptr;
+    if (currentFont == &roleFonts[i])
+      setFont(role);
+  }
 }
 #endif
 

@@ -40,6 +40,8 @@ void ILI9341DisplayDriver::setRoleFont(TextRole role, const GFXfont *font, uint8
   }
   roleFonts[i] = f;
   appliedFont = nullptr;
+  if (currentFont == &roleFonts[i])
+    setFont(role); // the active role: install the new font now so glyphs and metrics agree
 }
 
 ILI9341DisplayDriver::~ILI9341DisplayDriver()
