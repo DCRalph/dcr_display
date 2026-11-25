@@ -2,12 +2,27 @@
 
 #if __has_include(<TFT_eSPI.h>)
 
+// With LOAD_GFXFF, TFT_eSPI.h already declares every free font (FreeSans9pt7b ...).
+
 #undef LOG_TAG
 #define LOG_TAG "TFT"
 #include <dcr_Logger.h>
 
 TFTDisplayDriver::TFTDisplayDriver(uint16_t width, uint16_t height, uint8_t rotation)
-    : panel(), frame(&panel), w(width), h(height), rotation(rotation) {}
+    : panel(), frame(&panel), w(width), h(height), rotation(rotation)
+{
+#ifdef LOAD_GFXFF
+  setRoleFont(TextRole::Small, nullptr, 1);
+  setRoleFont(TextRole::Body, &FreeSans9pt7b);
+  setRoleFont(TextRole::Title, &FreeSansBold12pt7b);
+  setRoleFont(TextRole::XLarge, &FreeSansBold18pt7b);
+#else
+  setRoleScale(TextRole::Small, 1);
+  setRoleScale(TextRole::Body, 2);
+  setRoleScale(TextRole::Title, 3);
+  setRoleScale(TextRole::XLarge, 4);
+#endif
+}
 
 void TFTDisplayDriver::initPanel()
 {
@@ -110,15 +125,61 @@ void TFTDisplayDriver::drawSmoothArc(int32_t x, int32_t y, int32_t r, int32_t ir
   canvas().drawSmoothArc(x, y, r, ir, startAngle, endAngle, fgColor, bgColor, roundEnds);
 }
 
+#ifdef LOAD_GFXFF
+void TFTDisplayDriver::setRoleFont(TextRole role, const GFXfont *font, uint8_t scale)
+{
+  const uint8_t i = static_cast<uint8_t>(role);
+  if (i >= sizeof(roleFonts) / sizeof(roleFonts[0]))
+    return;
+  RoleFont f{font, static_cast<uint8_t>(scale ? scale : 1), 0, 0};
+  if (font)
+  {
+    // Same extent TFT_eSPI's TL_DATUM uses, so a role's height is its real glyph box.
+    for (uint16_t c = 0; c <= font->last - font->first; c++)
+    {
+      const GFXglyph &g = font->glyph[c];
+      f.ascent = max<int8_t>(f.ascent, -g.yOffset);
+      f.descent = max<int8_t>(f.descent, g.height + g.yOffset);
+    }
+  }
+  roleFonts[i] = f;
+}
+#else
+void TFTDisplayDriver::setRoleScale(TextRole role, uint8_t scale)
+{
+  const uint8_t i = static_cast<uint8_t>(role);
+  if (i < sizeof(roleFonts) / sizeof(roleFonts[0]))
+    roleFonts[i] = RoleFont{nullptr, static_cast<uint8_t>(scale ? scale : 1), 0, 0};
+}
+#endif
+
 void TFTDisplayDriver::setFont(TextRole role)
 {
   const uint8_t i = static_cast<uint8_t>(role);
-  canvas().setTextSize(i < sizeof(roleScale) ? roleScale[i] : 2);
+  currentFont = &roleFonts[i < sizeof(roleFonts) / sizeof(roleFonts[0]) ? i : 1];
+  TFT_eSPI &c = canvas();
+#ifdef LOAD_GFXFF
+  if (currentFont->font)
+  {
+    c.setFreeFont(static_cast<const GFXfont *>(currentFont->font));
+    c.setTextSize(1);
+    return;
+  }
+  c.setFreeFont(nullptr);
+#endif
+  c.setTextFont(1);
+  c.setTextSize(currentFont->scale);
 }
 
 void TFTDisplayDriver::setTextScale(uint8_t size)
 {
-  canvas().setTextSize(size);
+  currentFont = nullptr;
+  TFT_eSPI &c = canvas();
+#ifdef LOAD_GFXFF
+  c.setFreeFont(nullptr);
+#endif
+  c.setTextFont(1);
+  c.setTextSize(size);
 }
 
 void TFTDisplayDriver::drawText(const char *text, int32_t x, int32_t y, uint16_t fg, int32_t bg)
@@ -139,14 +200,9 @@ int16_t TFTDisplayDriver::textWidth(const char *text)
 
 int16_t TFTDisplayDriver::fontHeight()
 {
+  if (currentFont && currentFont->font)
+    return currentFont->ascent + currentFont->descent;
   return canvas().fontHeight();
-}
-
-void TFTDisplayDriver::setRoleScale(TextRole role, uint8_t scale)
-{
-  const uint8_t i = static_cast<uint8_t>(role);
-  if (i < sizeof(roleScale))
-    roleScale[i] = scale;
 }
 
 #endif

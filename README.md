@@ -74,12 +74,17 @@ any mix of sources works with no changes to screen code.
 | `EncoderInput` | detents since the last read, push-button clicks | `Delta` (with acceleration), `Select`, `Back` |
 | `ButtonInput` | click counts for up/down/left/right/select/back | directions, `Select`, `Back` |
 | `JoystickInput` | raw X/Y ADC, press clicks | directions with auto-repeat, `Select` |
-| `TouchInput` | a read callback filling panel x/y | `Tap`, pointer down/move/up |
+| `TouchInput` | a read callback filling panel x/y | `Tap`, `DoubleTap`, `LongPress`, `Swipe`, pointer down/move/up |
 
 Click counts follow ClickButton: 1 single, 2 double, negative for a long press.
 `defaultSelectClicks` sets which count reads as a plain select. With
 `multiClickSelects`, a double click on up/down selects, for two-button devices.
 Menu items bind actions to click counts with `addFunc(clicks, fn)`.
+
+Gestures come from `TouchInput` (thresholds in its `Config`): `Swipe` with a
+`SwipeDir`, `LongPress`, `DoubleTap`, and `PointerUp` carries the release speed
+for flings. Menus go back on a right swipe, run the long-click (`-1`) action on
+a long press, and fling on a quick flick; popups dismiss on a swipe.
 
 Resistive panels need filtering. `TouchInput::Config` turns each part on
 separately, and the defaults filter nothing:
@@ -148,35 +153,64 @@ redraw. Otherwise `Screen2::redrawMs` sets the interval: `-1` uses
 `display.setIdleRedrawMs` (0 on buffered panels, 1000 on unbuffered), and `0`
 redraws every frame.
 
-## Themes, roles and profiles
+## Look and themes
 
-- `Theme` holds the chrome colours. `Theme::forColorDepth` picks dark or mono;
-  replace it with `display.setTheme`. `Screen2::topBarColor` and item colours
-  default to the theme (`kThemeColor`).
-- Text uses roles (`Small`, `Body`, `Title`, `XLarge`) so discrete-font backends
-  render sensibly. `setTextSize` still works, and drivers can override
-  `setTextScale` to map sizes to their own fonts.
+Flat surfaces on a dark background with one accent colour: an inset rounded
+highlight for the selected menu row, switches for toggles, chevrons for
+navigation, a hairline top bar with a battery icon, card popups and pill
+buttons. Colour panels use FreeSans for the Body, Title and XLarge roles
+(TFT_eSPI with `LOAD_GFXFF`, or Adafruit GFX); Small and `setTextSize` keep the
+built-in 5x7 font, so existing app screens look as before.
+
+- `Theme::dark()` (default on colour), `Theme::light()` and `Theme::mono()`
+  (default on 1-bit, where focus and selection invert). Set with
+  `display.setTheme`. A screen's `topBarColor` still fills its bar.
+- Text roles: `Small`, `Body`, `Title`, `XLarge`. Drivers choose the face per
+  role: `setRoleFont` on ILI9341 and on TFT_eSPI with `LOAD_GFXFF`,
+  `setRoleScale` on TFT_eSPI without it, `fonts` on U8g2. `setTextScale` keeps
+  legacy integer sizes working.
 - `DisplayProfile` and `MenuStyle::Metrics` set chrome geometry from the panel
   size. Override them after `begin`, or replace the top bar with
   `setTopBarRenderer`.
+- `Draw::` has the shared pieces (switch, chevron, battery, focus ring) for
+  screens that want to match.
+
+## Animation
+
+`Tween` moves a value over time with an easing curve (`Ease::linear`,
+`outQuad`, `outCubic`, `inOutCubic`, `outBack`):
+
+```cpp
+Tween x;
+x.start(0, 100, 250, Ease::outCubic);   // from a draw() or update()
+display.fillRect(x.value(), 40, 10, 10, Color::White);
+```
+
+Starting one keeps its display redrawing until it ends, so nothing else has to
+change. The library uses it for the menu highlight sliding between rows, smooth
+list scrolling and flings, switch knobs, and popups sliding in.
+`display.setAnimations(false)` turns motion off; it is off automatically on
+unbuffered panels, where every frame would flicker.
 
 ## Popups and widgets
 
-- `screenManager.showPopup(new Popup(...))` takes ownership and is safe to call
-  from any task. Also available: `AutoClosePopup`, and `ChoicePopup` for a row
-  of choices.
-- `Button` plus `FocusGroup` give focus and activation from any source: grid
-  navigation, select, and taps.
-- `Keyboard` is an on-screen keyboard covering all printable ASCII, usable by
-  touch, joystick, buttons or encoder.
+- `screenManager.showPopup(new Popup(...))` takes ownership and is safe from any
+  task. Also `AutoClosePopup`, and `ChoicePopup` for a row of choices (the last
+  is the primary one). Popups close on select, back, a tap or a swipe.
+- Widgets: `Button` (Primary, Secondary or Ghost style), `Switch` and `Slider`,
+  in a `FocusGroup` that drives them from any source: grid navigation, select,
+  taps, drags, and an edit mode for sliders on button and encoder devices.
+  Focus only shows on displays with a non-pointer source.
+- `Keyboard`: an on-screen keyboard covering all printable ASCII.
 
 ## UI test screens
 
 `UiTest::RootScreen` reaches screens that exercise every feature on the app's
-own panel and inputs: menu items (numbers, floats, selects, click-count actions,
-hiding, submenus), a live input event log, popups (including one shown from
-another task), a button grid, the keyboard, drawing primitives and datums,
-redraw policy, and a background task with a watchdog overrun. Add one entry:
+own panel and inputs: theme and motion switches, menu items, components
+(buttons, switches, a slider), gestures, easing curves, popups (including one
+shown from another task), the keyboard, a live input event log, drawing
+primitives and datums, redraw policy, and a background task with a watchdog
+overrun. Add one entry:
 
 ```cpp
 MenuItemNavigate uiTestItem("UI test", &UiTest::RootScreen);

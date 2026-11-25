@@ -11,9 +11,9 @@
 struct U8g2FontSet
 {
   const uint8_t *small = u8g2_font_6x10_tf;
-  const uint8_t *body = u8g2_font_profont12_tf;
-  const uint8_t *title = u8g2_font_profont22_tf;
-  const uint8_t *xlarge = u8g2_font_logisoso24_tr;
+  const uint8_t *body = u8g2_font_helvR08_tf;
+  const uint8_t *title = u8g2_font_helvB10_tf;
+  const uint8_t *xlarge = u8g2_font_helvB14_tf;
 
   const uint8_t *forRole(TextRole role) const;
 };

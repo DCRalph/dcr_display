@@ -259,10 +259,11 @@ void TouchInput::poll(InputQueue &queue)
   if (touched && !down_)
   {
     down_ = true;
-    moved_ = false;
+    moved_ = longFired_ = false;
     startX_ = lastX_ = x;
     startY_ = lastY_ = y;
-    downMs_ = now;
+    downMs_ = lastMoveMs_ = now;
+    velocity_ = 0;
     InputEvent e{InputKind::PointerDown};
     e.x = x;
     e.y = y;
@@ -276,6 +277,10 @@ void TouchInput::poll(InputQueue &queue)
       moved_ = true;
     if (x != lastX_ || y != lastY_)
     {
+      const uint32_t dt = max<uint32_t>(1, now - lastMoveMs_);
+      velocity_ = velocity_ * 0.5f + (y - lastY_) * 100.0f / dt * 0.5f;
+      lastMoveMs_ = now;
+
       InputEvent e{InputKind::PointerMove};
       e.x = x;
       e.y = y;
@@ -284,22 +289,65 @@ void TouchInput::poll(InputQueue &queue)
       lastX_ = x;
       lastY_ = y;
     }
+    if (config_.longPressMs && !moved_ && !longFired_ && now - downMs_ >= config_.longPressMs)
+    {
+      longFired_ = true;
+      InputEvent e{InputKind::LongPress};
+      e.x = startX_;
+      e.y = startY_;
+      queue.push(e);
+    }
     return;
   }
 
   if (!touched && down_)
   {
     down_ = false;
+    // No fling for a finger that stopped before lifting, stayed within tap slop, or long-pressed.
+    if (now - lastMoveMs_ > 80 || !moved_ || longFired_)
+      velocity_ = 0;
+
     InputEvent up{InputKind::PointerUp};
     up.x = lastX_;
     up.y = lastY_;
+    up.value = static_cast<int16_t>(constrain(velocity_, -2000.0f, 2000.0f));
     queue.push(up);
-    if (!moved_ && now - downMs_ <= config_.tapMaxMs)
+
+    const int16_t dx = lastX_ - startX_, dy = lastY_ - startY_;
+    if (config_.swipeMinPx && moved_ && !longFired_ && now - downMs_ <= config_.swipeMaxMs &&
+        max(abs(dx), abs(dy)) >= config_.swipeMinPx)
+    {
+      InputEvent swipe{InputKind::Swipe};
+      swipe.x = startX_;
+      swipe.y = startY_;
+      swipe.value = static_cast<int16_t>(abs(dx) >= abs(dy) ? (dx > 0 ? SwipeDir::Right : SwipeDir::Left)
+                                                            : (dy > 0 ? SwipeDir::Down : SwipeDir::Up));
+      queue.push(swipe);
+      return;
+    }
+
+    if (!moved_ && !longFired_ && now - downMs_ <= config_.tapMaxMs)
     {
       InputEvent tap{InputKind::Tap};
       tap.x = startX_;
       tap.y = startY_;
       queue.push(tap);
+
+      const bool near = abs(startX_ - lastTapX_) <= 2 * config_.tapSlop && abs(startY_ - lastTapY_) <= 2 * config_.tapSlop;
+      if (config_.doubleTapMs && lastTapMs_ && now - lastTapMs_ <= config_.doubleTapMs && near)
+      {
+        InputEvent dbl{InputKind::DoubleTap};
+        dbl.x = startX_;
+        dbl.y = startY_;
+        queue.push(dbl);
+        lastTapMs_ = 0;
+      }
+      else
+      {
+        lastTapMs_ = now;
+        lastTapX_ = startX_;
+        lastTapY_ = startY_;
+      }
     }
   }
 }

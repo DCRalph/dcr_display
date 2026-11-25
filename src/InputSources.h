@@ -102,6 +102,12 @@ public:
     uint8_t tapSlop = 10; // max travel in px for a tap
     uint16_t tapMaxMs = 700;
 
+    // Gestures. 0 turns each one off.
+    uint8_t swipeMinPx = 40;       // travel for a swipe, released within swipeMaxMs
+    uint16_t swipeMaxMs = 600;
+    uint16_t longPressMs = 550;    // held still this long
+    uint16_t doubleTapMs = 320;    // second tap within this
+
     // Empty polls (one per frame) before a press counts as lifted. Above 1, a
     // press survives brief dropouts at its last position instead of ending.
     uint8_t releasePolls = 1;
@@ -136,6 +142,11 @@ private:
   int16_t goodX_ = 0, goodY_ = 0; // last reading that passed the filters
   bool moved_ = false;
   uint32_t downMs_ = 0;
+  bool longFired_ = false;
+  uint32_t lastTapMs_ = 0;
+  int16_t lastTapX_ = 0, lastTapY_ = 0;
+  uint32_t lastMoveMs_ = 0;
+  float velocity_ = 0; // px per 100 ms, smoothed
   uint8_t missedPolls_ = 0;
   bool suppressed_ = false;
   bool hiddenPress_ = false; // the press began while suppressed

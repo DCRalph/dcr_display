@@ -19,6 +19,14 @@ namespace Color
                                 1000);
   }
 
+  // Mix of a and b; t = 0 gives a, 255 gives b.
+  constexpr uint16_t blend(uint16_t a, uint16_t b, uint8_t t)
+  {
+    return static_cast<uint16_t>(((((a >> 11) & 0x1F) * (255 - t) + ((b >> 11) & 0x1F) * t) / 255) << 11 |
+                                 ((((a >> 5) & 0x3F) * (255 - t) + ((b >> 5) & 0x3F) * t) / 255) << 5 |
+                                 (((a & 0x1F) * (255 - t) + (b & 0x1F) * t) / 255));
+  }
+
   constexpr uint16_t Black = 0x0000;
   constexpr uint16_t White = 0xFFFF;
   constexpr uint16_t Red = 0xF800;

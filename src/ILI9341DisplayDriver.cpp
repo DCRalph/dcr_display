@@ -2,6 +2,10 @@
 
 #if __has_include(<Adafruit_ILI9341.h>)
 
+#include <Fonts/FreeSans9pt7b.h>
+#include <Fonts/FreeSansBold12pt7b.h>
+#include <Fonts/FreeSansBold18pt7b.h>
+
 #undef LOG_TAG
 #define LOG_TAG "ILI9341"
 #include <dcr_Logger.h>
@@ -9,7 +13,31 @@
 ILI9341DisplayDriver::ILI9341DisplayDriver(uint8_t spiBus, Pins pins, uint8_t rotation, uint32_t spiFrequency,
                                            bool buffered)
     : bus(spiBus), panel(&bus, pins.dc, pins.cs, pins.rst), wantBuffer(buffered), pins(pins), rotation(rotation),
-      spiFrequency(spiFrequency) {}
+      spiFrequency(spiFrequency)
+{
+  setRoleFont(TextRole::Small, nullptr, 1);
+  setRoleFont(TextRole::Body, &FreeSans9pt7b);
+  setRoleFont(TextRole::Title, &FreeSansBold12pt7b);
+  setRoleFont(TextRole::XLarge, &FreeSansBold18pt7b);
+}
+
+void ILI9341DisplayDriver::setRoleFont(TextRole role, const GFXfont *font, uint8_t scale)
+{
+  const uint8_t i = static_cast<uint8_t>(role);
+  if (i >= sizeof(roleFonts) / sizeof(roleFonts[0]))
+    return;
+  RoleFont f{font, static_cast<uint8_t>(scale ? scale : 1), 0, 0};
+  if (font)
+  {
+    for (uint16_t c = 0; c <= font->last - font->first; c++)
+    {
+      const GFXglyph &g = font->glyph[c];
+      f.ascent = max<int8_t>(f.ascent, -g.yOffset);
+      f.descent = max<int8_t>(f.descent, g.height + g.yOffset);
+    }
+  }
+  roleFonts[i] = f;
+}
 
 ILI9341DisplayDriver::~ILI9341DisplayDriver()
 {
@@ -24,6 +52,7 @@ bool ILI9341DisplayDriver::begin()
   panel.begin(spiFrequency);
   panel.setRotation(rotation);
   panel.fillScreen(ILI9341_BLACK);
+  panel.setTextWrap(false); // Display does its own wrapping; GFX wrapping breaks width measurement
   if (wantBuffer)
   {
     canvas = new GFXcanvas16(panel.width(), panel.height());
@@ -33,7 +62,9 @@ bool ILI9341DisplayDriver::begin()
       canvas = nullptr;
       debugW("No memory for a frame buffer; drawing direct to the panel");
     }
-    else if (partialPush && !diff.begin(canvas->width(), canvas->height()))
+    else
+      canvas->setTextWrap(false);
+    if (canvas && partialPush && !diff.begin(canvas->width(), canvas->height()))
       debugW("No memory for change tracking; pushing whole frames");
   }
   return true;
@@ -108,12 +139,17 @@ void ILI9341DisplayDriver::fillRoundRect(int32_t x, int32_t y, int32_t w, int32_
 
 void ILI9341DisplayDriver::setFont(TextRole role)
 {
-  textScale = defaultTextScaleFor(role);
+  const uint8_t i = static_cast<uint8_t>(role);
+  currentFont = &roleFonts[i < sizeof(roleFonts) / sizeof(roleFonts[0]) ? i : 1];
+  gfx().setFont(currentFont->font);
+  textScale = currentFont->font ? 1 : currentFont->scale;
   gfx().setTextSize(textScale);
 }
 
 void ILI9341DisplayDriver::setTextScale(uint8_t size)
 {
+  currentFont = nullptr;
+  gfx().setFont(nullptr);
   textScale = size ? size : 1;
   gfx().setTextSize(textScale);
 }
@@ -124,18 +160,28 @@ void ILI9341DisplayDriver::drawText(const char *text, int32_t x, int32_t y, uint
     gfx().setTextColor(fg);
   else
     gfx().setTextColor(fg, static_cast<uint16_t>(bg));
-  gfx().setCursor(x, y);
+  // GFX free fonts draw from the baseline; `y` is the top of the glyph box.
+  const bool free = currentFont && currentFont->font;
+  gfx().setCursor(x, free ? y + currentFont->ascent : y);
   gfx().print(text);
 }
 
-// Built-in 5x7 font in a 6x8 cell.
 int16_t ILI9341DisplayDriver::textWidth(const char *text)
 {
+  if (currentFont && currentFont->font)
+  {
+    int16_t x1, y1;
+    uint16_t bw, bh;
+    gfx().getTextBounds(text, 0, 0, &x1, &y1, &bw, &bh);
+    return static_cast<int16_t>(bw + (x1 > 0 ? x1 : 0));
+  }
   return static_cast<int16_t>(strlen(text) * 6 * textScale);
 }
 
 int16_t ILI9341DisplayDriver::fontHeight()
 {
+  if (currentFont && currentFont->font)
+    return currentFont->ascent + currentFont->descent;
   return static_cast<int16_t>(8 * textScale);
 }
 

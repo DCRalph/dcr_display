@@ -45,8 +45,16 @@ public:
   int16_t textWidth(const char *text) override;
   int16_t fontHeight() override;
 
-  /** Text scale (built-in font) per role. Defaults 1/2/3/4. */
+#ifdef LOAD_GFXFF
+  /**
+   * Font per role. Defaults: built-in font for Small, FreeSans 9 / Bold 12 /
+   * Bold 18 for Body, Title and XLarge. nullptr gives the built-in font at `scale`.
+   */
+  void setRoleFont(TextRole role, const GFXfont *font, uint8_t scale = 1);
+#else
+  /** Without LOAD_GFXFF every role is the built-in font at an integer scale. */
   void setRoleScale(TextRole role, uint8_t scale);
+#endif
 
   TFT_eSPI &tft() { return panel; }
   TFT_eSprite &sprite() { return frame; }
@@ -69,7 +77,14 @@ protected:
   bool partialPush = true;
   uint8_t pushedPercent = 100;
   FrameDiff diff;
-  uint8_t roleScale[static_cast<uint8_t>(TextRole::RoleCount)] = {1, 2, 3, 4};
+  struct RoleFont
+  {
+    const void *font; // const GFXfont * when LOAD_GFXFF
+    uint8_t scale;
+    int8_t ascent, descent; // glyph extent above/below the baseline, from the font
+  };
+  RoleFont roleFonts[static_cast<uint8_t>(TextRole::RoleCount)];
+  const RoleFont *currentFont = nullptr; // nullptr while app code uses setTextScale
 };
 
 #endif

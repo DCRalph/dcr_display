@@ -1,5 +1,6 @@
 #include "Display.h"
 
+#include "Draw.h"
 #include "Input.h"
 #include "Menu.h"
 #include "ScreenManager.h"
@@ -49,6 +50,15 @@ void Display::removeInput(InputSource &source)
       return;
     }
   }
+}
+
+void Display::animateFor(uint32_t ms)
+{
+  const uint32_t until = millis() + ms;
+  if (!animationPending || static_cast<int32_t>(until - animateUntilMs) > 0)
+    animateUntilMs = until;
+  animationPending = true;
+  dirty = true;
 }
 
 void Display::setMenuMetrics(const MenuStyle::Metrics &m)
@@ -338,38 +348,45 @@ void Display::drawTopBar()
     return;
   }
 
+  // Flat bar with a hairline under it. A screen's own topBarColor still fills it.
   const DisplayProfile &p = displayProfile;
+  const Theme &t = currentTheme;
   const int16_t barHeight = static_cast<int16_t>(p.topBarHeight);
-  uint16_t fg = screen->topBarTextColor != kThemeColor ? screen->topBarTextColor : currentTheme.topBarText;
-
-  if (p.topBarFilled && colorDepth() > 1)
-  {
-    const uint16_t bg = screen->topBarColor != kThemeColor ? screen->topBarColor : currentTheme.topBar;
-    fillRect(0, 0, width(), barHeight, bg);
-  }
+  const bool custom = screen->topBarColor != kThemeColor && !t.oneBit;
+  uint16_t fg = screen->topBarTextColor != kThemeColor && !t.oneBit ? screen->topBarTextColor : t.topBarText;
+  if (custom || (p.topBarFilled && !t.oneBit))
+    fillRect(0, 0, width(), barHeight, custom ? static_cast<uint16_t>(screen->topBarColor) : t.topBar);
   else
   {
-    fg = currentTheme.text;
-    if (p.topBarUnderline)
-      drawLine(0, barHeight - 1, width(), barHeight - 1, currentTheme.text);
+    fillRect(0, 0, width(), barHeight, t.background);
+    fg = t.text;
   }
+  if (!custom)
+    drawLine(0, barHeight - 1, width(), barHeight - 1, t.oneBit ? t.text : t.border);
 
   setTextRole(p.topBarTextRole);
   setTextColor(fg);
-  const int16_t midY = barHeight / 2;
-
+  const int16_t midY = (barHeight - 1) / 2;
+  const int16_t pad = max<int16_t>(p.topBarPaddingX, t.oneBit ? 1 : 8);
   setTextDatum(Datum::MiddleLeft);
-  drawString(screen->name, p.topBarPaddingX, midY);
+  drawString(screen->name, pad, midY);
 
   if (batteryProvider)
   {
     if (batteryReadMs == 0 || millis() - batteryReadMs >= 1000)
     {
       batteryReadMs = millis();
-      snprintf(batteryText, sizeof(batteryText), "%d%%", batteryProvider());
+      batteryPercent = constrain(batteryProvider(), 0, 100);
+      snprintf(batteryText, sizeof(batteryText), "%d%%", batteryPercent);
     }
+    const int16_t ih = max<int16_t>(7, barHeight / 2);
+    const int16_t iw = ih * 2;
+    const int16_t ix = width() - pad - iw;
+    Draw::battery(ix, midY - ih / 2, iw, ih, batteryPercent, fg);
+    setTextRole(TextRole::Small);
+    setTextColor(t.oneBit ? fg : Color::blend(fg, t.topBar, 70));
     setTextDatum(Datum::MiddleRight);
-    drawString(batteryText, width() - p.topBarPaddingX, midY);
+    drawString(batteryText, ix - 4, midY);
   }
 }
 
@@ -385,7 +402,13 @@ bool Display::render()
   const uint32_t now = millis();
   const Screen2 *screen = screenManager->getCurrentScreen();
   const int32_t interval = screen && screen->redrawMs >= 0 ? screen->redrawMs : static_cast<int32_t>(idleRedrawMs);
-  const bool draw = dirty || screenManager->isPopupActive() || interval == 0 ||
+  // Draw every frame while a tween runs, and once more after the last one ends so
+  // its final value lands even if that frame came late. Cleared before drawing,
+  // so a tween started by this frame's draw schedules the next.
+  const bool animating = animationPending;
+  if (animationPending && static_cast<int32_t>(animateUntilMs - now) <= 0)
+    animationPending = false;
+  const bool draw = dirty || animating || screenManager->isPopupActive() || interval == 0 ||
                     now - lastDrawMs >= static_cast<uint32_t>(interval);
   dirty = false;
 

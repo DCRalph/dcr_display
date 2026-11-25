@@ -4,6 +4,7 @@
 #include <functional>
 #include <vector>
 
+#include "Animation.h"
 #include "Widgets.h"
 
 // Modal box over the current screen. While one is showing, the screen keeps
@@ -15,7 +16,7 @@ public:
   Popup(String title, String message) : title(std::move(title)), message(std::move(message)) {}
   virtual ~Popup() = default;
 
-  /** Closes on Select, Back or a tap. */
+  /** Closes on Select, Back, a tap or a swipe. */
   virtual void update();
   virtual void draw();
   void close();
@@ -31,10 +32,15 @@ protected:
     int32_t textX, textY, textW, textH;
   };
 
+  /** Includes the slide-in offset while the popup is appearing. */
   Box box() const;
   /** Frame, title and wrapped message; returns the y below the message area. */
   void drawFrame(const Box &b);
   void drawText(const Box &b, uint16_t titleColor);
+
+private:
+  mutable Tween enter;
+  mutable bool entered = false;
 };
 
 // Closes itself after `durationMs`, or early on input, with a countdown bar.
