@@ -602,7 +602,10 @@ void MenuItemSelect::drawEditOverlay(const Rect &area)
   const int16_t sheetH = titleH + shown * optH + 8;
   const int16_t margin = t.oneBit ? 0 : 6;
   if (editGrow <= 0.001f)
+  {
     sheetDragY = 0; // fully closed: the next open starts from the bottom edge
+    sheetSeenIndex = -1;
+  }
   const int16_t sheetY = area.y + area.h - static_cast<int16_t>(sheetH * editGrow) + sheetDragY;
   const int16_t r = t.oneBit ? 3 : 12;
   sheet = Rect{static_cast<int16_t>(area.x + margin), sheetY, static_cast<int16_t>(area.w - 2 * margin), sheetH};
@@ -629,8 +632,14 @@ void MenuItemSelect::drawEditOverlay(const Rect &area)
   d.setTextDatum(Datum::MiddleLeft);
   d.drawString(getName(), sheet.x + 12, sheet.y + titleH / 2 + (t.oneBit ? 0 : 3));
 
-  // Keep the current option in view.
-  sheetFirst = constrain(currentIndex - shown / 2, 0, n - shown);
+  // Opening centres the current option; a later change only scrolls it into view.
+  if (sheetSeenIndex < 0)
+    sheetFirst = currentIndex - shown / 2;
+  else if (sheetSeenIndex != currentIndex)
+    sheetFirst = constrain(sheetFirst, currentIndex - shown + 1, currentIndex);
+  sheetSeenIndex = currentIndex;
+  sheetFirst = constrain(sheetFirst, 0, n - shown);
+  sheetShown = shown;
   sheetOptionH = optH;
   sheetOptions = Rect{static_cast<int16_t>(sheet.x + 6), static_cast<int16_t>(sheet.y + titleH),
                       static_cast<int16_t>(sheet.w - 12), static_cast<int16_t>(shown * optH)};
@@ -652,6 +661,26 @@ void MenuItemSelect::drawEditOverlay(const Rect &area)
     if (!t.oneBit)
       Draw::radio(sheetOptions.x + sheetOptions.w - 16, oy + optH / 2, 7, on, on ? ink : t.mutedText, ink, fill);
   }
+
+  // Scroll position, in the sheet's right margin.
+  if (n > shown)
+  {
+    const int16_t trackH = sheetOptions.h - 4;
+    const int16_t thumbH = max<int16_t>(8, trackH * shown / n);
+    const int16_t thumbY = sheetOptions.y + 2 + (trackH - thumbH) * sheetFirst / (n - shown);
+    d.fillRoundRect(sheet.x + sheet.w - 4, thumbY, 3, thumbH, 1, t.oneBit ? t.text : t.track);
+  }
+}
+
+bool MenuItemSelect::sheetScrolls() const
+{
+  return sheetShown > 0 && static_cast<int>(options.size()) > sheetShown;
+}
+
+void MenuItemSelect::scrollSheet(int steps)
+{
+  const int n = static_cast<int>(options.size());
+  sheetFirst = constrain(sheetFirst + steps, 0, max(0, n - sheetShown));
 }
 
 bool MenuItemSelect::editPointer(const InputEvent &e)
@@ -661,6 +690,12 @@ bool MenuItemSelect::editPointer(const InputEvent &e)
   switch (e.kind)
   {
   case InputKind::PointerDown:
+    if (sheetScrolls() && sheetOptions.contains(e.x, e.y))
+    {
+      sheetScrolling = true;
+      sheetScrollAccum = 0;
+      return true;
+    }
     if (!sheetGrip.contains(e.x, e.y))
       return false;
     sheetDragging = true;
@@ -668,11 +703,28 @@ bool MenuItemSelect::editPointer(const InputEvent &e)
     sheetDragY = 0;
     return true;
   case InputKind::PointerMove:
+    if (sheetScrolling && sheetOptionH > 0)
+    {
+      // The options follow the finger: dragging down brings earlier ones in.
+      sheetScrollAccum += e.value;
+      const int steps = sheetScrollAccum / sheetOptionH;
+      scrollSheet(-steps);
+      sheetScrollAccum -= steps * sheetOptionH;
+      return true;
+    }
     if (!sheetDragging)
       return false;
     sheetDragY = max<int16_t>(0, e.y - sheetDragStartY);
     return true;
   case InputKind::PointerUp:
+    if (sheetScrolling)
+    {
+      sheetScrolling = false;
+      // A flick keeps going: about 200 ms of travel at release speed, as the menu does.
+      if (abs(e.value) > 40 && sheetOptionH > 0)
+        scrollSheet(constrain(-e.value * 2 / sheetOptionH, -12, 12));
+      return true;
+    }
     if (!sheetDragging)
       return false;
     sheetDragging = false;
@@ -683,7 +735,9 @@ bool MenuItemSelect::editPointer(const InputEvent &e)
       sheetDragY = 0;
     return true;
   case InputKind::Swipe:
-    if (e.value == static_cast<int16_t>(SwipeDir::Down) && sheet.contains(e.x, e.y))
+    // A list that scrolls takes swipes over its options as scrolling.
+    if (e.value == static_cast<int16_t>(SwipeDir::Down) && sheet.contains(e.x, e.y) &&
+        !(sheetScrolls() && sheetOptions.contains(e.x, e.y)))
     {
       stopEditing();
       return true;
