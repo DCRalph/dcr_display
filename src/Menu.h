@@ -366,4 +366,5 @@ private:
   // Motion: the list scroll and the highlight, both in px from the first row.
   Tween scrollY, highlightY;
   int laidOutRowH = 0;
+  int16_t drawnScroll = 0; // scroll offset of the last drawn frame; taps hit-test against it
 };

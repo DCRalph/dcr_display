@@ -135,7 +135,7 @@ void Slider::draw(bool focused, bool pressed) const
 
 int Slider::stepSize() const
 {
-  return step == 0 ? 1 : abs(step);
+  return step > 0 ? step : 1;
 }
 
 void Slider::set(int v)

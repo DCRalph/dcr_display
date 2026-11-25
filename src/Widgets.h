@@ -84,6 +84,7 @@ private:
 class Slider : public Widget
 {
 public:
+  /** `step` below 1 counts as 1. */
   Slider(String label, int *value, int minValue, int maxValue, int step = 1, std::function<void(int)> onChange = nullptr)
       : label(std::move(label)), value(value), minValue(minValue), maxValue(maxValue), step(step),
         onChange(std::move(onChange)) {}

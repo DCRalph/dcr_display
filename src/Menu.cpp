@@ -563,7 +563,7 @@ void Menu::tap(int16_t x, int16_t y)
     if (slot < static_cast<int>(visible.size()) && visible[slot] == active)
     {
       Rect minus, plus;
-      MenuStyle::editTargets(static_cast<int16_t>(top + slot * rowH - scrollY.value()), static_cast<int16_t>(rowH),
+      MenuStyle::editTargets(static_cast<int16_t>(top + slot * rowH - drawnScroll), static_cast<int16_t>(rowH),
                              minus, plus);
       if (plus.contains(x, y))
         current->adjust(1);
@@ -608,7 +608,7 @@ int Menu::slotAt(int16_t y) const
   const int top = MenuStyle::contentTopY();
   if (y < top || rowH <= 0 || y >= top + getItemsPerPage() * rowH)
     return -1;
-  return static_cast<int>((y - top + scrollY.value()) / rowH);
+  return (y - top + drawnScroll) / rowH;
 }
 
 void Menu::draw()
@@ -656,7 +656,8 @@ void Menu::draw()
   if (highlightY.target() != highlightTarget)
     highlightY.start(highlightTarget, 130);
 
-  const float scroll = scrollY.value();
+  drawnScroll = static_cast<int16_t>(scrollY.value());
+  const float scroll = drawnScroll;
   const int16_t inset = t.oneBit ? 0 : 4;
   const int16_t barRight = visible.size() > rows ? 5 : 0;
   const int16_t hlW = static_cast<int16_t>(d.width()) - 2 * inset - barRight;

@@ -166,8 +166,9 @@ built-in 5x7 font, so existing app screens look as before.
   (default on 1-bit, where focus and selection invert). Set with
   `display.setTheme`. A screen's `topBarColor` still fills its bar.
 - Text roles: `Small`, `Body`, `Title`, `XLarge`. Drivers choose the face per
-  role (`setRoleFont` on the colour drivers, `fonts` on U8g2), and
-  `setTextScale` keeps legacy integer sizes working.
+  role: `setRoleFont` on ILI9341 and on TFT_eSPI with `LOAD_GFXFF`,
+  `setRoleScale` on TFT_eSPI without it, `fonts` on U8g2. `setTextScale` keeps
+  legacy integer sizes working.
 - `DisplayProfile` and `MenuStyle::Metrics` set chrome geometry from the panel
   size. Override them after `begin`, or replace the top bar with
   `setTopBarRenderer`.
