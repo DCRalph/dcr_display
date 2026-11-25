@@ -39,6 +39,7 @@ void ILI9341DisplayDriver::setRoleFont(TextRole role, const GFXfont *font, uint8
     }
   }
   roleFonts[i] = f;
+  currentFont = nullptr;
 }
 
 ILI9341DisplayDriver::~ILI9341DisplayDriver()
@@ -65,7 +66,10 @@ bool ILI9341DisplayDriver::begin()
       debugW("No memory for a frame buffer; drawing direct to the panel");
     }
     else
+    {
       canvas->setTextWrap(false);
+      currentFont = nullptr; // fonts so far went to the panel; apply the next one to the canvas
+    }
     if (canvas && partialPush && !diff.begin(canvas->width(), canvas->height()))
       debugW("No memory for change tracking; pushing whole frames");
   }
@@ -106,7 +110,7 @@ uint16_t ILI9341DisplayDriver::height() const
 
 void ILI9341DisplayDriver::drawPixel(int32_t x, int32_t y, uint16_t color)
 {
-  gfx().drawPixel(x, y, color);
+  target().drawPixel(x, y, color);
 }
 
 void ILI9341DisplayDriver::fillRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t color)
@@ -131,17 +135,17 @@ void ILI9341DisplayDriver::fillScreen(uint16_t color)
 
 void ILI9341DisplayDriver::drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t color)
 {
-  gfx().drawLine(x0, y0, x1, y1, color);
+  target().drawLine(x0, y0, x1, y1, color);
 }
 
 void ILI9341DisplayDriver::drawRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t color)
 {
-  gfx().drawRect(x, y, w, h, color);
+  target().drawRect(x, y, w, h, color);
 }
 
 void ILI9341DisplayDriver::drawRoundRect(int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, uint16_t color)
 {
-  gfx().drawRoundRect(x, y, w, h, r, color);
+  target().drawRoundRect(x, y, w, h, r, color);
 }
 
 void ILI9341DisplayDriver::fillRoundRect(int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, uint16_t color)
@@ -159,29 +163,29 @@ void ILI9341DisplayDriver::setFont(TextRole role)
   if (next == currentFont)
     return;
   currentFont = next;
-  gfx().setFont(currentFont->font);
+  target().setFont(currentFont->font);
   textScale = currentFont->font ? 1 : currentFont->scale;
-  gfx().setTextSize(textScale);
+  target().setTextSize(textScale);
 }
 
 void ILI9341DisplayDriver::setTextScale(uint8_t size)
 {
   currentFont = nullptr;
-  gfx().setFont(nullptr);
+  target().setFont(nullptr);
   textScale = size ? size : 1;
-  gfx().setTextSize(textScale);
+  target().setTextSize(textScale);
 }
 
 void ILI9341DisplayDriver::drawText(const char *text, int32_t x, int32_t y, uint16_t fg, int32_t bg)
 {
   if (bg == kThemeColor)
-    gfx().setTextColor(fg);
+    target().setTextColor(fg);
   else
-    gfx().setTextColor(fg, static_cast<uint16_t>(bg));
+    target().setTextColor(fg, static_cast<uint16_t>(bg));
   // GFX free fonts draw from the baseline; `y` is the top of the glyph box.
   const bool free = currentFont && currentFont->font;
-  gfx().setCursor(x, free ? y + currentFont->ascent : y);
-  gfx().print(text);
+  target().setCursor(x, free ? y + currentFont->ascent : y);
+  target().print(text);
 }
 
 int16_t ILI9341DisplayDriver::textWidth(const char *text)
@@ -190,7 +194,7 @@ int16_t ILI9341DisplayDriver::textWidth(const char *text)
   {
     int16_t x1, y1;
     uint16_t bw, bh;
-    gfx().getTextBounds(text, 0, 0, &x1, &y1, &bw, &bh);
+    target().getTextBounds(text, 0, 0, &x1, &y1, &bw, &bh);
     return static_cast<int16_t>(bw + (x1 > 0 ? x1 : 0));
   }
   return static_cast<int16_t>(strlen(text) * 6 * textScale);

@@ -276,73 +276,140 @@ int Display::wrapTextInBounds(const String &text, int x, int y, int width, int h
   return drawWrapped(text, x, y, width, height, gap, color, textAlignment);
 }
 
-// Word wrap without heap allocation: lines are built in a stack buffer, which
-// matters because popups re-wrap their message every frame.
+// Word wrap without heap allocation: popups re-wrap their message every frame.
+// The same tokens and rules as drawWrappedLong, which takes text too long for
+// the stack buffer; a line is never longer than the text, so it always fits.
 int Display::drawWrapped(const String &text, int x, int y, int width, int height, int gap, uint16_t color,
                          int textAlignment)
 {
+  char line[160];
+  const int len = text.length();
+  if (len >= static_cast<int>(sizeof(line)))
+    return drawWrappedLong(text, x, y, width, height, gap, color, textAlignment);
+
   setTextColor(color);
   setTextDatum(textAlignment <= 8 ? textAlignment % 3 : 0);
 
+  const char *s = text.c_str();
   const int lineHeight = fontHeight() + gap;
-  const char *p = text.c_str();
-  char line[128];
-  size_t lineLen = 0;
   int lines = 0;
+  int lineLen = 0;
+  line[0] = '\0';
 
-  auto fits = [&](int lineIndex)
-  { return lineIndex == 0 || lineHeight <= 0 || (lineIndex + 1) * lineHeight - gap <= height; };
   auto flush = [&]() -> bool
   {
-    if (!fits(lines))
+    if (lineHeight > 0 && (lines + 1) * lineHeight - gap > height && lines > 0)
       return false;
-    line[lineLen] = '\0';
     drawString(line, x, y + lines * lineHeight);
     lines++;
     lineLen = 0;
+    line[0] = '\0';
     return true;
   };
 
-  while (true)
+  int i = 0;
+  while (i <= len)
   {
-    const char *end = p;
-    while (*end && *end != ' ' && *end != '\n')
+    int end = i;
+    while (end < len && s[end] != ' ' && s[end] != '\n')
       end++;
-    const size_t wordLen = min<size_t>(end - p, sizeof(line) - 1);
-
-    if (wordLen > 0)
+    const int wordLen = end - i;
+    if (wordLen == 0 && end < len && s[end] == ' ')
     {
-      // Append the word if the line has room in both the buffer and the box; else wrap.
-      bool appended = false;
-      if (lineLen > 0 && lineLen + 1 + wordLen < sizeof(line))
-      {
-        line[lineLen] = ' ';
-        memcpy(line + lineLen + 1, p, wordLen);
-        line[lineLen + 1 + wordLen] = '\0';
-        if (textWidth(line) <= width)
-        {
-          lineLen += 1 + wordLen;
-          appended = true;
-        }
-      }
-      if (!appended)
-      {
-        if (lineLen > 0 && !flush())
-          return lines;
-        memcpy(line, p, wordLen);
-        lineLen = wordLen;
-      }
+      i = end + 1;
+      continue;
     }
 
-    if (*end == '\0' || *end == '\n')
+    // candidate = line, a space if the line is not empty, then the word.
+    char candidate[sizeof(line)];
+    int candLen = 0;
+    if (lineLen)
     {
-      if ((lineLen > 0 || *end == '\n') && !flush())
+      memcpy(candidate, line, lineLen);
+      candidate[lineLen] = ' ';
+      candLen = lineLen + 1;
+    }
+    memcpy(candidate + candLen, s + i, wordLen);
+    candLen += wordLen;
+    candidate[candLen] = '\0';
+
+    if (lineLen && textWidth(candidate) > width)
+    {
+      if (!flush())
         return lines;
-      if (*end == '\0')
+      memcpy(line, s + i, wordLen);
+      lineLen = wordLen;
+      line[lineLen] = '\0';
+    }
+    else
+    {
+      memcpy(line, candidate, candLen + 1);
+      lineLen = candLen;
+    }
+
+    if (end >= len || s[end] == '\n')
+    {
+      if (!flush())
         return lines;
     }
-    p = *end ? end + 1 : end;
+    i = end + 1;
   }
+  return lines;
+}
+
+int Display::drawWrappedLong(const String &text, int x, int y, int width, int height, int gap, uint16_t color,
+                         int textAlignment)
+{
+  setTextColor(color);
+  const uint8_t col = textAlignment <= 8 ? textAlignment % 3 : 0;
+  setTextDatum(col);
+
+  const int lineHeight = fontHeight() + gap;
+  int lines = 0;
+  String line;
+
+  auto flush = [&]() -> bool
+  {
+    if (lineHeight > 0 && (lines + 1) * lineHeight - gap > height && lines > 0)
+      return false;
+    drawString(line, x, y + lines * lineHeight);
+    lines++;
+    line = "";
+    return true;
+  };
+
+  const int len = text.length();
+  int i = 0;
+  while (i <= len)
+  {
+    int end = i;
+    while (end < len && text[end] != ' ' && text[end] != '\n')
+      end++;
+    const String word = text.substring(i, end);
+    if (word.length() == 0 && end < len && text[end] == ' ')
+    {
+      i = end + 1;
+      continue;
+    }
+    const String candidate = line.length() ? line + " " + word : word;
+
+    if (line.length() && textWidth(candidate) > width)
+    {
+      if (!flush())
+        return lines;
+      line = word;
+    }
+    else
+      line = candidate;
+
+    if (end >= len || text[end] == '\n')
+    {
+      if (!flush())
+        return lines;
+    }
+    i = end + 1;
+  }
+  return lines;
 }
 
 void Display::noTopBar()

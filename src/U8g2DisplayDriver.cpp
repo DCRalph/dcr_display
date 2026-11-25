@@ -51,7 +51,9 @@ bool U8g2DisplayDriver::begin()
     debugE("Paged U8g2 device: use a full-buffer (_F_) panel class");
     return false;
   }
-  if (partialPush)
+  // begin() clears the panel, so the next push sends everything.
+  panelInSync = false;
+  if (partialPush && !shown)
     shown = static_cast<uint8_t *>(malloc(static_cast<size_t>(u8g2.getBufferTileWidth()) * 8 * u8g2.getBufferTileHeight()));
   u8g2.setFont(fonts.forRole(TextRole::Body));
   u8g2.setFontPosTop();
@@ -62,6 +64,7 @@ bool U8g2DisplayDriver::begin()
 
 // Each tile row (8 px) is a contiguous tileWidth * 8 bytes in every U8g2 buffer
 // layout, so a whole changed row is sent: no assumption about the byte order inside.
+// Like sendBuffer(), it ends with refreshDisplay(): a no-op on OLEDs, the update on e-paper.
 void U8g2DisplayDriver::push()
 {
   const uint8_t tw = u8g2.getBufferTileWidth(), th = u8g2.getBufferTileHeight();
@@ -93,6 +96,8 @@ void U8g2DisplayDriver::push()
     sentRows += end - row;
     row = end;
   }
+  if (sentRows)
+    u8g2.refreshDisplay();
   pushedPercent = static_cast<uint8_t>(sentRows * 100 / th);
 }
 

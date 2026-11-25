@@ -56,12 +56,29 @@ public:
   void setRoleScale(TextRole role, uint8_t scale);
 #endif
 
-  TFT_eSPI &tft() { return panel; }
-  TFT_eSprite &sprite() { return frame; }
+  /** Direct access for app drawing. Taking one forgets the applied font, so the next role is reapplied. */
+  TFT_eSPI &tft()
+  {
+    currentFont = nullptr;
+    return panel;
+  }
+  TFT_eSprite &sprite()
+  {
+    currentFont = nullptr;
+    return frame;
+  }
   /** Where drawing lands: the sprite, or the panel in fallback mode. */
-  TFT_eSPI &canvas() { return spriteReady ? static_cast<TFT_eSPI &>(frame) : panel; }
+  TFT_eSPI &canvas()
+  {
+    currentFont = nullptr;
+    return target();
+  }
+  void resync() override { diff.invalidate(); }
 
 protected:
+  TFT_eSPI &target() { return spriteReady ? static_cast<TFT_eSPI &>(frame) : panel; }
+  /** True while the sprite has no TFT_eSPI viewport, so fills can write the frame directly. */
+  bool fullViewport();
   virtual void initPanel();
   virtual void pushFrame();
   /** Send one changed region of the sprite to the same place on the panel. */

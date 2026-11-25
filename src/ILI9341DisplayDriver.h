@@ -52,11 +52,23 @@ public:
   void setRoleFont(TextRole role, const GFXfont *font, uint8_t scale = 1);
 
   SPIClass &spi() { return bus; }
-  Adafruit_ILI9341 &tft() { return panel; }
+  /** Direct access for app drawing. Taking one forgets the applied font, so the next role is reapplied. */
+  Adafruit_ILI9341 &tft()
+  {
+    currentFont = nullptr;
+    return panel;
+  }
   /** Where drawing lands: the canvas when buffered, else the panel. */
-  Adafruit_GFX &gfx() { return canvas ? static_cast<Adafruit_GFX &>(*canvas) : panel; }
+  Adafruit_GFX &gfx()
+  {
+    currentFont = nullptr;
+    return target();
+  }
+  void resync() override { diff.invalidate(); }
 
 private:
+  Adafruit_GFX &target() { return canvas ? static_cast<Adafruit_GFX &>(*canvas) : panel; }
+
   SPIClass bus;
   Adafruit_ILI9341 panel;
   GFXcanvas16 *canvas = nullptr;

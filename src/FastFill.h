@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <string.h>
 
 // Solid fills straight into a 16-bit frame buffer, in aligned 32-bit words.
 // Sprite and canvas fillRect write one pixel at a time (and TFT_eSprite then
@@ -23,11 +24,11 @@ namespace FastFill
         *p++ = value;
         n--;
       }
-      uint32_t *q = reinterpret_cast<uint32_t *>(p);
-      for (int32_t i = n / 2; i > 0; i--)
-        *q++ = word;
+      // memcpy of a fixed 4 bytes compiles to one aligned store, without type punning.
+      for (int32_t i = n / 2; i > 0; i--, p += 2)
+        memcpy(p, &word, sizeof word);
       if (n & 1)
-        *reinterpret_cast<uint16_t *>(q) = value;
+        *p = value;
     }
   }
 

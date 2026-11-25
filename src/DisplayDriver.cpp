@@ -101,16 +101,31 @@ void DisplayDriver::drawCircleQuadrants(int32_t cx, int32_t cy, int32_t r, uint8
   }
 }
 
-// halves: 1 top, 2 bottom. Each scanline spans `stretch` extra pixels between the arcs.
-void DisplayDriver::fillCircleHalves(int32_t cx, int32_t cy, int32_t r, uint8_t halves, int32_t stretch, uint16_t color)
+// TFT_eSPI's corner rasteriser, ported so buffered drivers keep its exact shapes
+// while drawing through their own (fast) fillRect. corners: 1 bottom, 2 top.
+void DisplayDriver::fillCircleHelper(int32_t x0, int32_t y0, int32_t r, uint8_t corners, int32_t delta, uint16_t color)
 {
-  for (int32_t dy = 0; dy <= r; dy++)
+  int32_t f = 1 - r, ddF_x = 1, ddF_y = -r - r, y = 0;
+  delta++;
+  while (y < r)
   {
-    const int32_t dx = static_cast<int32_t>(sqrtf(static_cast<float>(r * r - dy * dy)) + 0.5f);
-    if (halves & 1)
-      fillRect(cx - dx, cy - dy, 2 * dx + 1 + stretch, 1, color);
-    if ((halves & 2) && dy > 0)
-      fillRect(cx - dx, cy + dy, 2 * dx + 1 + stretch, 1, color);
+    if (f >= 0)
+    {
+      if (corners & 0x1)
+        fillRect(x0 - y, y0 + r, y + y + delta, 1, color);
+      if (corners & 0x2)
+        fillRect(x0 - y, y0 - r, y + y + delta, 1, color);
+      r--;
+      ddF_y += 2;
+      f += ddF_y;
+    }
+    y++;
+    ddF_x += 2;
+    f += ddF_x;
+    if (corners & 0x1)
+      fillRect(x0 - r, y0 + y, r + r + delta, 1, color);
+    if (corners & 0x2)
+      fillRect(x0 - r, y0 - y, r + r + delta, 1, color);
   }
 }
 
@@ -135,15 +150,9 @@ void DisplayDriver::drawRoundRect(int32_t x, int32_t y, int32_t w, int32_t h, in
 void DisplayDriver::fillRoundRect(int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, uint16_t color)
 {
   r = clampRadius(r, w, h);
-  if (r == 0)
-  {
-    fillRect(x, y, w, h, color);
-    return;
-  }
-  fillRect(x, y + r, w, h - 2 * r, color);
-  const int32_t stretch = w - 2 * r - 1;
-  fillCircleHalves(x + r, y + r, r, 1, stretch, color);
-  fillCircleHalves(x + r, y + h - r - 1, r, 2, stretch, color);
+  fillRect(x, y + r, w, h - r - r, color);
+  fillCircleHelper(x + r, y + h - r - 1, r, 1, w - r - r - 1, color);
+  fillCircleHelper(x + r, y + r, r, 2, w - r - r - 1, color);
 }
 
 // Ring drawn as horizontal spans: a full ring is two fills per row; an arc tests
@@ -160,9 +169,24 @@ void DisplayDriver::drawSmoothArc(int32_t x, int32_t y, int32_t r, int32_t ir, i
 
   for (int32_t dy = -r; dy <= r; dy++)
   {
-    const int32_t outer = static_cast<int32_t>(sqrtf(static_cast<float>(r2 - dy * dy)));
+    // Float estimates, corrected with exact integer tests: outer is the widest dx with
+    // dx^2 <= r^2 - dy^2, inner the narrowest with dx^2 >= ir^2 - dy^2.
+    const int32_t outerSq = r2 - dy * dy;
+    int32_t outer = static_cast<int32_t>(sqrtf(static_cast<float>(outerSq)));
+    while (outer > 0 && outer * outer > outerSq)
+      outer--;
+    while ((outer + 1) * (outer + 1) <= outerSq)
+      outer++;
     const int32_t innerSq = ir2 - dy * dy;
-    const int32_t inner = innerSq > 0 ? static_cast<int32_t>(ceilf(sqrtf(static_cast<float>(innerSq)))) : -1;
+    int32_t inner = -1;
+    if (innerSq > 0)
+    {
+      inner = static_cast<int32_t>(ceilf(sqrtf(static_cast<float>(innerSq))));
+      while (inner > 0 && (inner - 1) * (inner - 1) >= innerSq)
+        inner--;
+      while (inner * inner < innerSq)
+        inner++;
+    }
 
     if (full)
     {

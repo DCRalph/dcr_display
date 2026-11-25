@@ -26,6 +26,8 @@ class U8g2DisplayDriver : public DisplayDriver
 {
 public:
   explicit U8g2DisplayDriver(U8G2 &panel) : u8g2(panel) {}
+  U8g2DisplayDriver(const U8g2DisplayDriver &) = delete;
+  U8g2DisplayDriver &operator=(const U8g2DisplayDriver &) = delete;
   ~U8g2DisplayDriver() override;
 
   bool begin() override;
@@ -36,6 +38,8 @@ public:
   uint8_t lastPushPercent() const override { return pushedPercent; }
   /** Call before begin(). On by default; off always sends the whole buffer. */
   void setPartialPush(bool on) { partialPush = on; }
+  /** Call after clearDisplay(), sleep/wake or anything else that changes the panel outside push(). */
+  void resync() override { panelInSync = false; }
 
   void drawPixel(int32_t x, int32_t y, uint16_t color) override;
   void fillRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t color) override;

@@ -142,6 +142,7 @@ public:
 
 private:
   int drawWrapped(const String &text, int x, int y, int width, int height, int gap, uint16_t color, int textAlignment);
+  int drawWrappedLong(const String &text, int x, int y, int width, int height, int gap, uint16_t color, int textAlignment);
 
   DisplayDriver *panel = nullptr;
   ScreenManager *screenManager = nullptr;
