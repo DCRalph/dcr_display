@@ -55,7 +55,7 @@ public:
   virtual bool isPointer() const { return false; }
 };
 
-namespace Input
+namespace Inputs
 {
   void addSource(InputSource &source);
   void removeSource(InputSource &source);

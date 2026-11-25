@@ -68,7 +68,7 @@ void setup()
   display.begin(driver);
   touch.begin(); // registry XPT2046_Touchscreen uses the default SPI bus
   touch.setRotation(1);
-  Input::addSource(touchInput);
+  Inputs::addSource(touchInput);
 
   keyboard.setBounds({0, static_cast<int16_t>(display.height() / 2), static_cast<int16_t>(display.width()),
                       static_cast<int16_t>(display.height() / 2)});

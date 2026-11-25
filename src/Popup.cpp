@@ -11,7 +11,7 @@ void Popup::close()
 
 void Popup::update()
 {
-  for (const InputEvent &e : Input::events())
+  for (const InputEvent &e : Inputs::events())
   {
     if (e.kind == InputKind::Select || e.kind == InputKind::Back || e.kind == InputKind::Tap)
     {
@@ -124,7 +124,7 @@ void ChoicePopup::layout(const Box &b)
   if (buttons.empty())
     return;
   const int32_t gap = display.profile().popupPadding;
-  const int32_t h = max<int32_t>(display.height() / 6, Input::hasPointer() ? 32 : 10);
+  const int32_t h = max<int32_t>(display.height() / 6, Inputs::hasPointer() ? 32 : 10);
   const int32_t w = (b.textW - gap * (static_cast<int32_t>(buttons.size()) - 1)) / static_cast<int32_t>(buttons.size());
   const int32_t y = b.y + b.h - display.profile().popupPadding - h;
   for (size_t i = 0; i < buttons.size(); i++)
@@ -135,7 +135,7 @@ void ChoicePopup::layout(const Box &b)
 void ChoicePopup::update()
 {
   layout(box());
-  for (const InputEvent &e : Input::events())
+  for (const InputEvent &e : Inputs::events())
   {
     if (e.kind == InputKind::Back)
       chosen = -1;

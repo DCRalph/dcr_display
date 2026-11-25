@@ -53,7 +53,7 @@ bool FocusGroup::update()
     return false;
 
   bool consumed = false;
-  for (const InputEvent &e : Input::events())
+  for (const InputEvent &e : Inputs::events())
   {
     switch (e.kind)
     {
@@ -277,7 +277,7 @@ void Keyboard::linearStep(int steps)
 bool Keyboard::update()
 {
   bool consumed = false;
-  for (const InputEvent &e : Input::events())
+  for (const InputEvent &e : Inputs::events())
   {
     switch (e.kind)
     {

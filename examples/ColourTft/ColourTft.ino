@@ -68,8 +68,8 @@ void setup()
   mainMenu.addMenuItem(&askItem);
 
   display.begin(driver);
-  Input::addSource(buttons);
-  Input::addSource(joystick);
+  Inputs::addSource(buttons);
+  Inputs::addSource(joystick);
   screenManager.setScreen(&HomeScreen);
 }
 

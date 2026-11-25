@@ -17,7 +17,7 @@ namespace
   uint32_t gLastEventMs = 0;
 }
 
-void Input::addSource(InputSource &source)
+void Inputs::addSource(InputSource &source)
 {
   for (InputSource *s : gSources)
     if (s == &source)
@@ -25,7 +25,7 @@ void Input::addSource(InputSource &source)
   gSources.push_back(&source);
 }
 
-void Input::removeSource(InputSource &source)
+void Inputs::removeSource(InputSource &source)
 {
   for (auto it = gSources.begin(); it != gSources.end(); ++it)
   {
@@ -37,13 +37,13 @@ void Input::removeSource(InputSource &source)
   }
 }
 
-void Input::beginFrame()
+void Inputs::beginFrame()
 {
   gPolled = false;
   gQueue.clear();
 }
 
-const InputQueue &Input::events()
+const InputQueue &Inputs::events()
 {
   if (!gPolled)
   {
@@ -60,17 +60,17 @@ const InputQueue &Input::events()
   return gQueue;
 }
 
-bool Input::hadEventsThisFrame()
+bool Inputs::hadEventsThisFrame()
 {
   return gPolled && gQueue.size() > 0;
 }
 
-void Input::inject(const InputEvent &event)
+void Inputs::inject(const InputEvent &event)
 {
   gInjected.push(event);
 }
 
-bool Input::hasPointer()
+bool Inputs::hasPointer()
 {
   for (InputSource *s : gSources)
     if (s->isPointer())
@@ -78,7 +78,7 @@ bool Input::hasPointer()
   return false;
 }
 
-uint32_t Input::lastEventMs()
+uint32_t Inputs::lastEventMs()
 {
   return gLastEventMs;
 }

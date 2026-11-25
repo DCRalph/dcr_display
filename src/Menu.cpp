@@ -21,12 +21,12 @@ namespace MenuStyle
       m.large = {TextRole::Title, 18, 4};
       m.minTouchRowHeight = 16;
     }
-    else if (height <= 180)
+    else if (height <= 160) // same bands as DisplayProfile::forPanel, so rows start below the top bar
     {
       m.contentTopY = 16;
-      m.small = {TextRole::Small, 12, 2};
-      m.medium = {TextRole::Body, 18, 3};
-      m.large = {TextRole::Title, 26, 4};
+      m.small = {TextRole::Small, 10, 2};
+      m.medium = {TextRole::Body, 16, 3};
+      m.large = {TextRole::Title, 22, 4};
       m.minTouchRowHeight = 28;
     }
     return m;
@@ -47,7 +47,7 @@ namespace MenuStyle
     DrawStyle s = size == MenuSize::Small    ? gMetrics.small
                   : size == MenuSize::Medium ? gMetrics.medium
                                              : gMetrics.large;
-    if (Input::hasPointer() && s.lineHeight < gMetrics.minTouchRowHeight)
+    if (Inputs::hasPointer() && s.lineHeight < gMetrics.minTouchRowHeight)
       s.lineHeight = gMetrics.minTouchRowHeight;
     return s;
   }
@@ -161,7 +161,7 @@ void MenuItem::drawRow(int16_t x, int16_t y, bool active)
   display.drawString(name, x + 2, midY);
 
   int16_t valueRight = x + w - 2;
-  if (editing && Input::hasPointer())
+  if (editing && Inputs::hasPointer())
   {
     Rect minus, plus;
     MenuStyle::editTargets(y, h, minus, plus);
@@ -402,7 +402,7 @@ void Menu::back()
 
 void Menu::update()
 {
-  for (const InputEvent &e : Input::events())
+  for (const InputEvent &e : Inputs::events())
   {
     Menu *target = this;
     while (target->activeSubmenu)

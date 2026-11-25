@@ -322,7 +322,7 @@ bool Display::render()
   if (!ready || !screenManager)
     return false;
 
-  Input::beginFrame();
+  Inputs::beginFrame();
 
   const uint32_t now = millis();
   const Screen2 *screen = screenManager->getCurrentScreen();
@@ -342,7 +342,7 @@ bool Display::render()
 
   // Input lands after this frame's draw, so state it changed shows on the next.
   screenManager->update();
-  if (Input::hadEventsThisFrame())
+  if (Inputs::hadEventsThisFrame())
     dirty = true;
 
   if (draw)

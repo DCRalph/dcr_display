@@ -5,7 +5,7 @@
 #include "Input.h"
 
 // Ready-made sources. Each takes plain callbacks, so they work with any button,
-// encoder or touch library. Register with `Input::addSource(source)`.
+// encoder or touch library. Register with `Inputs::addSource(source)`.
 
 // Click counts follow ClickButton: 1 single, 2 double, negative = long press.
 using ClickReader = std::function<int()>;

@@ -61,7 +61,7 @@ void setup()
   display.begin(driver);
   display.setBatteryProvider([]()
                              { return 100; });
-  Input::addSource(encoderInput);
+  Inputs::addSource(encoderInput);
   screenManager.setScreen(&HomeScreen);
 }
 
