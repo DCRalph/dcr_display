@@ -37,6 +37,11 @@ const uint8_t *U8g2FontSet::forRole(TextRole role) const
   }
 }
 
+U8g2DisplayDriver::~U8g2DisplayDriver()
+{
+  free(shown);
+}
+
 bool U8g2DisplayDriver::begin()
 {
   if (!u8g2.begin())
@@ -46,11 +51,49 @@ bool U8g2DisplayDriver::begin()
     debugE("Paged U8g2 device: use a full-buffer (_F_) panel class");
     return false;
   }
+  if (partialPush)
+    shown = static_cast<uint8_t *>(malloc(static_cast<size_t>(u8g2.getBufferTileWidth()) * 8 * u8g2.getBufferTileHeight()));
   u8g2.setFont(fonts.forRole(TextRole::Body));
   u8g2.setFontPosTop();
   u8g2.setFontMode(1);
   u8g2.setDrawColor(1);
   return true;
+}
+
+// Each tile row (8 px) is a contiguous tileWidth * 8 bytes in every U8g2 buffer
+// layout, so a whole changed row is sent: no assumption about the byte order inside.
+void U8g2DisplayDriver::push()
+{
+  const uint8_t tw = u8g2.getBufferTileWidth(), th = u8g2.getBufferTileHeight();
+  const size_t rowBytes = static_cast<size_t>(tw) * 8;
+  const uint8_t *buffer = u8g2.getBufferPtr();
+  if (!shown || !panelInSync)
+  {
+    u8g2.sendBuffer();
+    if (shown)
+      memcpy(shown, buffer, rowBytes * th);
+    panelInSync = true;
+    pushedPercent = 100;
+    return;
+  }
+
+  uint8_t sentRows = 0;
+  for (uint8_t row = 0; row < th;)
+  {
+    if (memcmp(buffer + row * rowBytes, shown + row * rowBytes, rowBytes) == 0)
+    {
+      row++;
+      continue;
+    }
+    uint8_t end = row + 1;
+    while (end < th && memcmp(buffer + end * rowBytes, shown + end * rowBytes, rowBytes) != 0)
+      end++;
+    u8g2.updateDisplayArea(0, row, tw, end - row);
+    memcpy(shown + row * rowBytes, buffer + row * rowBytes, rowBytes * (end - row));
+    sentRows += end - row;
+    row = end;
+  }
+  pushedPercent = static_cast<uint8_t>(sentRows * 100 / th);
 }
 
 void U8g2DisplayDriver::drawPixel(int32_t x, int32_t y, uint16_t color)

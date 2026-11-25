@@ -2,6 +2,8 @@
 
 #if __has_include(<Adafruit_ILI9341.h>)
 
+#include "FastFill.h"
+
 #include <Fonts/FreeSans9pt7b.h>
 #include <Fonts/FreeSansBold12pt7b.h>
 #include <Fonts/FreeSansBold18pt7b.h>
@@ -109,12 +111,22 @@ void ILI9341DisplayDriver::drawPixel(int32_t x, int32_t y, uint16_t color)
 
 void ILI9341DisplayDriver::fillRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t color)
 {
-  gfx().fillRect(x, y, w, h, color);
+  if (!canvas)
+  {
+    panel.fillRect(x, y, w, h, color);
+    return;
+  }
+  // Canvas fills in 32-bit words; GFXcanvas16 stores native-order pixels.
+  if (FastFill::clip(x, y, w, h, canvas->width(), canvas->height()))
+    FastFill::rect(canvas->getBuffer(), canvas->width(), x, y, w, h, color);
 }
 
 void ILI9341DisplayDriver::fillScreen(uint16_t color)
 {
-  gfx().fillScreen(color);
+  if (canvas)
+    fillRect(0, 0, canvas->width(), canvas->height(), color);
+  else
+    panel.fillScreen(color);
 }
 
 void ILI9341DisplayDriver::drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t color)
@@ -134,13 +146,19 @@ void ILI9341DisplayDriver::drawRoundRect(int32_t x, int32_t y, int32_t w, int32_
 
 void ILI9341DisplayDriver::fillRoundRect(int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, uint16_t color)
 {
-  gfx().fillRoundRect(x, y, w, h, r, color);
+  if (canvas)
+    DisplayDriver::fillRoundRect(x, y, w, h, r, color);
+  else
+    panel.fillRoundRect(x, y, w, h, r, color);
 }
 
 void ILI9341DisplayDriver::setFont(TextRole role)
 {
   const uint8_t i = static_cast<uint8_t>(role);
-  currentFont = &roleFonts[i < sizeof(roleFonts) / sizeof(roleFonts[0]) ? i : 1];
+  const RoleFont *next = &roleFonts[i < sizeof(roleFonts) / sizeof(roleFonts[0]) ? i : 1];
+  if (next == currentFont)
+    return;
+  currentFont = next;
   gfx().setFont(currentFont->font);
   textScale = currentFont->font ? 1 : currentFont->scale;
   gfx().setTextSize(textScale);

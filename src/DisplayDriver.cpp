@@ -146,7 +146,8 @@ void DisplayDriver::fillRoundRect(int32_t x, int32_t y, int32_t w, int32_t h, in
   fillCircleHalves(x + r, y + h - r - 1, r, 2, stretch, color);
 }
 
-// Pixel-scan fallback: correct but slow (O(r^2)), and not anti-aliased.
+// Ring drawn as horizontal spans: a full ring is two fills per row; an arc tests
+// angles only inside the ring, never the whole bounding box. Not anti-aliased.
 void DisplayDriver::drawSmoothArc(int32_t x, int32_t y, int32_t r, int32_t ir, int32_t startAngle, int32_t endAngle,
                                   uint16_t fgColor, uint16_t, bool)
 {
@@ -159,23 +160,34 @@ void DisplayDriver::drawSmoothArc(int32_t x, int32_t y, int32_t r, int32_t ir, i
 
   for (int32_t dy = -r; dy <= r; dy++)
   {
-    for (int32_t dx = -r; dx <= r; dx++)
+    const int32_t outer = static_cast<int32_t>(sqrtf(static_cast<float>(r2 - dy * dy)));
+    const int32_t innerSq = ir2 - dy * dy;
+    const int32_t inner = innerSq > 0 ? static_cast<int32_t>(ceilf(sqrtf(static_cast<float>(innerSq)))) : -1;
+
+    if (full)
     {
-      const int32_t d2 = dx * dx + dy * dy;
-      if (d2 > r2 || d2 < ir2)
-        continue;
-      if (!full)
+      if (inner < 0)
+        fillRect(x - outer, y + dy, 2 * outer + 1, 1, fgColor);
+      else if (inner <= outer)
       {
-        // 0 deg at six o'clock, increasing clockwise.
-        float a = atan2f(static_cast<float>(-dx), static_cast<float>(dy)) * 57.29578f;
-        if (a < 0)
-          a += 360.0f;
-        const bool inside = startAngle < endAngle ? (a >= startAngle && a <= endAngle)
-                                                  : (a >= startAngle || a <= endAngle);
-        if (!inside)
-          continue;
+        fillRect(x - outer, y + dy, outer - inner + 1, 1, fgColor);
+        fillRect(x + inner, y + dy, outer - inner + 1, 1, fgColor);
       }
-      drawPixel(x + dx, y + dy, fgColor);
+      continue;
+    }
+
+    for (int32_t dx = -outer; dx <= outer; dx++)
+    {
+      if (inner >= 0 && abs(dx) < inner)
+        continue;
+      // 0 deg at six o'clock, increasing clockwise.
+      float a = atan2f(static_cast<float>(-dx), static_cast<float>(dy)) * 57.29578f;
+      if (a < 0)
+        a += 360.0f;
+      const bool inside = startAngle < endAngle ? (a >= startAngle && a <= endAngle)
+                                                : (a >= startAngle || a <= endAngle);
+      if (inside)
+        drawPixel(x + dx, y + dy, fgColor);
     }
   }
 }

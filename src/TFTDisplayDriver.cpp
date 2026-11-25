@@ -4,6 +4,8 @@
 
 // With LOAD_GFXFF, TFT_eSPI.h already declares every free font (FreeSans9pt7b ...).
 
+#include "FastFill.h"
+
 #undef LOG_TAG
 #define LOG_TAG "TFT"
 #include <dcr_Logger.h>
@@ -84,19 +86,25 @@ void TFTDisplayDriver::drawPixel(int32_t x, int32_t y, uint16_t color)
   canvas().drawPixel(x, y, color);
 }
 
+// Sprite fills go straight into the frame in 32-bit words (TFT_eSPI viewports are not
+// applied; this library does not use them). TFT_eSprite stores pixels byte-swapped.
 void TFTDisplayDriver::fillRect(int32_t x, int32_t y, int32_t rw, int32_t rh, uint16_t color)
 {
-  canvas().fillRect(x, y, rw, rh, color);
+  if (!spriteReady)
+  {
+    panel.fillRect(x, y, rw, rh, color);
+    return;
+  }
+  if (FastFill::clip(x, y, rw, rh, w, h))
+    FastFill::rect(static_cast<uint16_t *>(frame.getPointer()), w, x, y, rw, rh,
+                   static_cast<uint16_t>(color >> 8 | color << 8));
 }
 
 // Not frame.fillScreen(): TFT_eSprite inherits it from TFT_eSPI, which fills the
 // panel's unrotated TFT_WIDTH x TFT_HEIGHT and so misses part of a rotated sprite.
 void TFTDisplayDriver::fillScreen(uint16_t color)
 {
-  if (spriteReady)
-    frame.fillSprite(color);
-  else
-    panel.fillScreen(color);
+  fillRect(0, 0, w, h, color);
 }
 
 void TFTDisplayDriver::drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t color)
@@ -116,7 +124,11 @@ void TFTDisplayDriver::drawRoundRect(int32_t x, int32_t y, int32_t rw, int32_t r
 
 void TFTDisplayDriver::fillRoundRect(int32_t x, int32_t y, int32_t rw, int32_t rh, int32_t r, uint16_t color)
 {
-  canvas().fillRoundRect(x, y, rw, rh, r, color);
+  // The base version is built from fillRect, so in the sprite it gets the fast fill.
+  if (spriteReady)
+    DisplayDriver::fillRoundRect(x, y, rw, rh, r, color);
+  else
+    panel.fillRoundRect(x, y, rw, rh, r, color);
 }
 
 void TFTDisplayDriver::drawSmoothArc(int32_t x, int32_t y, int32_t r, int32_t ir, int32_t startAngle, int32_t endAngle,
@@ -156,7 +168,11 @@ void TFTDisplayDriver::setRoleScale(TextRole role, uint8_t scale)
 void TFTDisplayDriver::setFont(TextRole role)
 {
   const uint8_t i = static_cast<uint8_t>(role);
-  currentFont = &roleFonts[i < sizeof(roleFonts) / sizeof(roleFonts[0]) ? i : 1];
+  const RoleFont *next = &roleFonts[i < sizeof(roleFonts) / sizeof(roleFonts[0]) ? i : 1];
+  // setFreeFont rescans every glyph; menus ask for the same role row after row.
+  if (next == currentFont)
+    return;
+  currentFont = next;
   TFT_eSPI &c = canvas();
 #ifdef LOAD_GFXFF
   if (currentFont->font)

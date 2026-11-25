@@ -354,6 +354,8 @@ private:
   void ensureActiveVisible();
   void layoutPage(const std::vector<uint16_t> &visible, uint8_t rows);
   int slotAt(int16_t y) const; // visible-list index under y, or -1
+  const std::vector<uint16_t> &visibleItems();
+  std::vector<uint16_t> visibleScratch;
 
   uint16_t active = 0;
   uint16_t topVisible = 0; // index into the visible-item list

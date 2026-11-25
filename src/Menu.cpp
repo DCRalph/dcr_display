@@ -455,6 +455,15 @@ void Menu::update()
   }
 }
 
+const std::vector<uint16_t> &Menu::visibleItems()
+{
+  visibleScratch.clear(); // keeps its capacity: no allocation after the first frame
+  for (size_t i = 0; i < items.size(); i++)
+    if (!items[i]->isHidden())
+      visibleScratch.push_back(static_cast<uint16_t>(i));
+  return visibleScratch;
+}
+
 void Menu::handle(const InputEvent &e)
 {
   if (items.empty())
@@ -504,10 +513,7 @@ void Menu::handle(const InputEvent &e)
   {
     // A long press is the touch version of a long click: run the -1 action.
     const int slot = slotAt(e.y);
-    std::vector<uint16_t> visible;
-    for (size_t i = 0; i < items.size(); i++)
-      if (!items[i]->isHidden())
-        visible.push_back(static_cast<uint16_t>(i));
+    const std::vector<uint16_t> &visible = visibleItems();
     if (!editing && slot >= 0 && slot < static_cast<int>(visible.size()))
     {
       active = visible[slot];
@@ -552,10 +558,7 @@ void Menu::tap(int16_t x, int16_t y)
   const int rowH = MenuStyle::lineHeight(menuSize);
   const int top = MenuStyle::contentTopY();
 
-  std::vector<uint16_t> visible;
-  for (size_t i = 0; i < items.size(); i++)
-    if (!items[i]->isHidden())
-      visible.push_back(static_cast<uint16_t>(i));
+  const std::vector<uint16_t> &visible = visibleItems();
 
   MenuItem *current = items[active];
   if (current->isEditing())
@@ -620,17 +623,11 @@ void Menu::draw()
   }
 
   ensureActiveVisible();
-  std::vector<uint16_t> visible;
-  visible.reserve(items.size());
+  const std::vector<uint16_t> &visible = visibleItems();
   size_t activeSlot = 0;
-  for (size_t i = 0; i < items.size(); i++)
-  {
-    if (items[i]->isHidden())
-      continue;
-    if (i == active)
-      activeSlot = visible.size();
-    visible.push_back(static_cast<uint16_t>(i));
-  }
+  for (size_t i = 0; i < visible.size(); i++)
+    if (visible[i] == active)
+      activeSlot = i;
   if (visible.empty())
     return;
 
