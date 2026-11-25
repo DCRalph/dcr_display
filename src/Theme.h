@@ -88,9 +88,9 @@ struct Theme
   static Theme light()
   {
     Theme t;
-    t.background = Color::rgb(236, 239, 244);
+    t.background = Color::rgb(226, 230, 237);
     t.surface = Color::White;
-    t.border = Color::rgb(214, 218, 225);
+    t.border = Color::rgb(190, 196, 206);
     t.track = Color::rgb(136, 144, 158);
     t.text = Color::rgb(20, 22, 26);
     t.mutedText = Color::rgb(92, 99, 112);
@@ -115,7 +115,7 @@ struct Theme
     Theme t;
     const uint16_t navy = Color::rgb(41, 57, 99);    // COL_DARK_BLUE
     const uint16_t sky = Color::rgb(90, 222, 255);   // COL_LIGHT_BLUE
-    t.background = Color::rgb(232, 238, 246);
+    t.background = Color::rgb(218, 226, 240);
     t.surface = t.popupBackground = Color::White;
     t.border = Color::rgb(140, 158, 186);
     t.track = Color::rgb(118, 134, 164);
