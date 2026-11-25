@@ -6,12 +6,14 @@
 #include <TFT_eSPI.h>
 
 #include "DisplayDriver.h"
+#include "FrameDiff.h"
 
-// TFT_eSPI panel with a full-frame sprite. If the sprite cannot be allocated
-// (a large panel without PSRAM) it falls back to drawing straight to the panel.
+// TFT_eSPI panel with a full-frame sprite, pushing only what changed (FrameDiff).
+// If the sprite cannot be allocated (a large panel without PSRAM) it falls back
+// to drawing straight to the panel.
 //
-// Subclass and override `initPanel`/`pushFrame` for panels TFT_eSPI cannot
-// drive itself but whose frame a sprite can hold (e.g. an RM67162 AMOLED).
+// Subclass and override `initPanel`, `pushFrame` and `pushRegion` for panels
+// TFT_eSPI cannot drive itself but whose frame a sprite can hold (RM67162 AMOLED).
 class TFTDisplayDriver : public DisplayDriver
 {
 public:
@@ -23,6 +25,9 @@ public:
   uint16_t height() const override { return h; }
   bool buffered() const override { return spriteReady; }
   void push() override;
+  uint8_t lastPushPercent() const override { return pushedPercent; }
+  /** Call before begin(). On by default; off always pushes the whole frame. */
+  void setPartialPush(bool on) { partialPush = on; }
 
   void drawPixel(int32_t x, int32_t y, uint16_t color) override;
   void fillRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t color) override;
@@ -51,6 +56,8 @@ public:
 protected:
   virtual void initPanel();
   virtual void pushFrame();
+  /** Send one changed region of the sprite to the same place on the panel. */
+  virtual void pushRegion(int16_t x, int16_t y, int16_t w, int16_t h);
   /** False makes `begin` fail instead of falling back to direct drawing. */
   virtual bool allowDirectFallback() const { return true; }
 
@@ -59,6 +66,9 @@ protected:
   uint16_t w, h;
   uint8_t rotation;
   bool spriteReady = false;
+  bool partialPush = true;
+  uint8_t pushedPercent = 100;
+  FrameDiff diff;
   uint8_t roleScale[static_cast<uint8_t>(TextRole::RoleCount)] = {1, 2, 3, 4};
 };
 

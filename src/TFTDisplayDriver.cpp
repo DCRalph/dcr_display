@@ -21,6 +21,11 @@ void TFTDisplayDriver::pushFrame()
   frame.pushSprite(0, 0);
 }
 
+void TFTDisplayDriver::pushRegion(int16_t x, int16_t y, int16_t rw, int16_t rh)
+{
+  frame.pushSprite(x, y, x, y, rw, rh);
+}
+
 bool TFTDisplayDriver::begin()
 {
   initPanel();
@@ -36,15 +41,27 @@ bool TFTDisplayDriver::begin()
     debugW("No memory for a %ux%u frame; drawing direct to the panel", w, h);
   }
   else
+  {
     frame.setSwapBytes(true);
+    if (partialPush && !diff.begin(w, h))
+      debugW("No memory for change tracking; pushing whole frames");
+  }
   canvas().setTextDatum(TL_DATUM);
   return true;
 }
 
 void TFTDisplayDriver::push()
 {
-  if (spriteReady)
+  if (!spriteReady)
+    return;
+  if (!diff.active())
+  {
     pushFrame();
+    pushedPercent = 100;
+    return;
+  }
+  pushedPercent = diff.diff(static_cast<const uint16_t *>(frame.getPointer()), [this](const FrameDiff::Region &r)
+                            { pushRegion(r.x, r.y, r.w, r.h); });
 }
 
 void TFTDisplayDriver::drawPixel(int32_t x, int32_t y, uint16_t color)

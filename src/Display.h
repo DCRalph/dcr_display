@@ -25,6 +25,7 @@ struct FrameStats
   uint16_t renders = 0;     // render() calls, drawn or not
   uint32_t avgDrawUs = 0;   // building a frame: screen, top bar, popup (drawn frames)
   uint32_t avgPushUs = 0;   // sending it to the panel (drawn frames)
+  uint8_t avgPushedPercent = 0; // share of each frame actually sent; partial pushes send less
   uint32_t maxFrameUs = 0;  // worst draw + push
   uint32_t avgUpdateUs = 0; // input and screen update (every render)
   uint8_t loadPercent = 0;  // share of the second spent inside render()
@@ -68,7 +69,10 @@ public:
   const DisplayProfile &profile() const { return displayProfile; }
   void setProfile(const DisplayProfile &profile);
 
-  /** Fills with `color`, or the theme background when kThemeColor. */
+  /**
+   * Fills with `color`, or the theme background when kThemeColor. A screen whose
+   * draw() starts with this skips the library's own pre-clear on later frames.
+   */
   void clearScreen(int32_t color = kThemeColor);
   void fillScreen(int32_t color = kThemeColor);
   void push();
@@ -110,7 +114,11 @@ public:
   void drawTopBar();
   void setTopBarRenderer(TopBarRenderer renderer) { topBarRenderer = renderer; }
   /** nullptr hides the battery readout. */
-  void setBatteryProvider(BatteryProvider provider) { batteryProvider = provider; }
+  void setBatteryProvider(BatteryProvider provider)
+  {
+    batteryProvider = provider;
+    batteryReadMs = 0;
+  }
 
   /** Redraw on the next `render`. */
   void invalidate() { dirty = true; }
@@ -139,6 +147,14 @@ private:
   InputSet inputSet;
   TopBarRenderer topBarRenderer = nullptr;
   BatteryProvider batteryProvider = nullptr;
+  char batteryText[8] = {0};
+  uint32_t batteryReadMs = 0; // the provider is read once a second, not every frame
+
+  // Pre-clear skipping: a screen that filled the frame last time is not cleared first.
+  const Screen2 *lastDrawnScreen = nullptr;
+  bool screenFillsFrame = false;
+  bool drawingScreen = false;
+  bool sawScreenFill = false;
 
   uint8_t datum = Datum::TopLeft;
   uint16_t textFg = Color::White;
@@ -154,6 +170,7 @@ private:
     uint32_t windowStartMs = 0;
     uint16_t frames = 0, renders = 0;
     uint64_t drawUs = 0, pushUs = 0, updateUs = 0, renderUs = 0;
+    uint32_t pushedPercent = 0;
     uint32_t maxFrameUs = 0;
   } frameAccum;
   FrameStats frameStats;
