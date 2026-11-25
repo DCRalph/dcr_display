@@ -612,6 +612,7 @@ void MenuItemSelect::drawEditOverlay(const Rect &area)
   // The handle and title take a drag; generous, since a thumb covers the handle.
   sheetGrip = Rect{sheet.x, static_cast<int16_t>(sheet.y - 10), sheet.w, static_cast<int16_t>(titleH + 10)};
   d.dimRect(area.x, area.y, area.w, area.h); // the menu recedes behind it
+  d.dimTopBar();
 
   if (t.oneBit)
   {

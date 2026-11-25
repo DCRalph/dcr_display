@@ -422,6 +422,11 @@ void Display::noTopBar()
   showTopBar = false;
 }
 
+void Display::dimTopBar()
+{
+  dimBar = true;
+}
+
 void Display::drawTopBar()
 {
   if (!screenManager || !screenManager->getCurrentScreen())
@@ -524,9 +529,13 @@ bool Display::render()
 
     if (showTopBar)
       drawTopBar();
+    // The screen drew before the bar, so an overlay's dim reaches it only now.
+    if (dimBar)
+      dimRect(0, 0, width(), MenuStyle::contentTopY());
     drawUs = micros() - startUs;
   }
   showTopBar = true;
+  dimBar = false;
 
   // Input lands after this frame's draw, so state it changed shows on the next.
   const uint32_t updateStartUs = micros();
