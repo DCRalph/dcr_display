@@ -49,8 +49,13 @@ namespace MenuStyle
   uint16_t contentTopY() noexcept;
   uint8_t itemsPerPage(MenuSize size, uint16_t displayHeight);
 
-  /** The -/+ touch targets drawn on a row being edited. */
+  /** The -/+ touch targets drawn on a row being edited, at the panel's right edge. */
   void editTargets(int16_t rowY, int16_t rowH, Rect &minus, Rect &plus);
+
+  // Space around a Grouped menu's card.
+  constexpr int16_t kGroupMarginX = 8;
+  constexpr int16_t kGroupMarginTop = 4;
+  constexpr int16_t kGroupRadius = 10;
 }
 
 struct ActionFunction
@@ -99,12 +104,39 @@ public:
   virtual bool leadingChevron() const { return false; }
   virtual bool trailingChevron() const { return false; }
 
+  // Editors. The menu grows the row by editExtraHeight() while editing, animated
+  // through editGrow (0-1), draws drawEditOverlay() above every row, and hands
+  // touches to editTap() first.
+  /** Px the row grows by while editing; 0 keeps it one row tall. */
+  virtual int16_t editExtraHeight(int16_t rowH) const { return 0; }
+  /** True if the editor draws over the menu (a sheet) instead of in its row. */
+  virtual bool hasEditOverlay() const { return false; }
+  virtual void drawEditOverlay(const Rect &area) {}
+  /** A touch while editing. True if it hit the editor; false ends editing. */
+  virtual bool editTap(int16_t x, int16_t y);
+  /** True if Up should step back through the options (a vertical list). */
+  virtual bool editIsList() const { return false; }
+
   std::vector<ActionFunction> functions;
 
 protected:
   /** Standard row: name left, trailing content right, -/+ targets when editing by touch. */
   void drawRow(int16_t x, int16_t y, bool active);
+  /** In-row editing: a raised pill of value between two keys at the row's end. */
+  virtual bool editsInline() const { return true; }
+  /** The pill's keys show < > (options that cycle) instead of - +. */
+  virtual bool editCycles() const { return false; }
+  /** Draws the pill ending at `right` and records its keys as editMinus / editPlus. */
+  void drawEditPill(int16_t right, int16_t midY, int16_t rowH);
   MenuSize size() const;
+
+  // Where the menu is drawing this row, set before draw(): its box (taller while
+  // growing), its normal height, and how far an editor has grown in.
+  Rect rowBox;
+  int16_t baseRowH = 0;
+  float editGrow = 0;
+  // Touch targets as last drawn, for editTap().
+  Rect editMinus, editPlus;
 
   Menu *parent = nullptr;
   MenuItemType type = MenuItemType::None;
@@ -191,7 +223,20 @@ public:
   void setOnChange(std::function<void()> callback) { onChange = std::move(callback); }
   void removeOnChange() { onChange = nullptr; }
 
+  /** How this item edits; `NumberEdit::Theme` follows the theme. */
+  void setEditStyle(NumberEdit style) { editStyle = style; }
+  NumberEdit getEditStyle() const { return editStyle; }
+  /** Where the value sits between min and max, 0-1; negative if unbounded. */
+  virtual float fraction() const { return -1; }
+
+  void draw(int16_t x, int16_t y, bool active) override;
+  int16_t editExtraHeight(int16_t rowH) const override;
+
 protected:
+  bool editsInline() const override;
+  NumberEdit style() const;
+
+  NumberEdit editStyle = NumberEdit::Theme;
   bool selected = false;
   bool isMutable = false;
   bool fastUpdate = false;
@@ -218,6 +263,13 @@ public:
         min(std::numeric_limits<T>::lowest()), max(std::numeric_limits<T>::max()) {}
 
   void setDecimals(uint8_t places) { decimals = places; }
+
+  float fraction() const override
+  {
+    if (!value || !(max > min) || min == std::numeric_limits<T>::lowest() || max == std::numeric_limits<T>::max())
+      return -1;
+    return static_cast<float>(*value - min) / static_cast<float>(max - min);
+  }
 
   void adjust(int steps) override
   {
@@ -305,7 +357,34 @@ public:
   void adjust(int steps) override;
   void stopEditing() override;
 
+  /** How this item edits; `SelectEdit::Theme` follows the theme. */
+  void setEditStyle(SelectEdit style) { editStyle = style; }
+  SelectEdit getEditStyle() const { return editStyle; }
+  const std::vector<String> &getOptions() const { return options; }
+
+  void draw(int16_t x, int16_t y, bool active) override;
+  int16_t editExtraHeight(int16_t rowH) const override;
+  bool hasEditOverlay() const override;
+  void drawEditOverlay(const Rect &area) override;
+  bool editTap(int16_t x, int16_t y) override;
+  bool editIsList() const override;
+
+protected:
+  bool editsInline() const override;
+  bool editCycles() const override { return true; }
+
 private:
+  SelectEdit style() const;
+  /** Segment strip of the Expand editor; false if the options do not fit side by side. */
+  bool segmentLayout(Rect &strip) const;
+  int optionAt(int16_t x, int16_t y) const;
+
+  SelectEdit editStyle = SelectEdit::Theme;
+  bool expandFallback = false; // Expand with options too wide for segments: edits inline
+  // The sheet as last drawn, for taps: its box, the first option shown and option height.
+  Rect sheet, sheetOptions;
+  int sheetFirst = 0;
+  int16_t sheetOptionH = 0;
   std::vector<String> options;
   int currentIndex = 0;
   bool selected = false;
@@ -328,6 +407,9 @@ public:
   uint8_t getItemsPerPage() const;
   void setMenuSize(MenuSize size) { menuSize = size; }
   MenuSize getMenuSize() const { return menuSize; }
+  /** Row layout; `MenuLook::Theme` follows the theme. */
+  void setLook(MenuLook look) { menuLook = look; }
+  MenuLook getLook() const { return menuLook; }
 
   void setActive(uint16_t index);
   uint16_t getActive() const { return active; }
@@ -348,6 +430,16 @@ public:
   std::vector<MenuItem *> items;
 
 private:
+  // Where rows go this frame: the list's first row y, its x and width, the
+  // viewport height, and whether rows sit in a Grouped card.
+  struct Frame
+  {
+    int16_t top, x, w, viewH;
+    bool grouped;
+  };
+  Frame frame() const;
+  bool grouped() const;
+
   void handle(const InputEvent &event);
   void tap(int16_t x, int16_t y);
   void moveBy(int steps);
@@ -357,7 +449,14 @@ private:
   const std::vector<uint16_t> &visibleItems();
   std::vector<uint16_t> visibleScratch;
 
+  // Only the row being edited grows: its slot and how many px it has grown by.
+  int growSlot() const;
+  int16_t growPx() const;
+  int32_t slotTop(int slot) const;
+  int16_t slotHeight(int slot) const;
+
   uint16_t active = 0;
+  MenuLook menuLook = MenuLook::Theme;
   uint16_t topVisible = 0; // index into the visible-item list
   uint8_t manualRowsPerPage = 0;
   MenuSize menuSize;
@@ -369,4 +468,9 @@ private:
   Tween scrollY, highlightY;
   int laidOutRowH = 0;
   int32_t drawnScroll = 0; // scroll offset of the last drawn frame; taps hit-test against it
+
+  // The editor growing in or out, and its progress 0-1.
+  MenuItem *growItem = nullptr;
+  Tween grow;
+  int growVisibleSlot = -1; // growItem's slot in the last drawn visible list
 };

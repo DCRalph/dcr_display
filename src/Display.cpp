@@ -435,7 +435,7 @@ void Display::drawTopBar()
   const int16_t barHeight = static_cast<int16_t>(p.topBarHeight);
   const bool custom = screen->topBarColor != kThemeColor && !t.oneBit;
   uint16_t fg = screen->topBarTextColor != kThemeColor && !t.oneBit ? screen->topBarTextColor : t.topBarText;
-  if (custom || (p.topBarFilled && !t.oneBit))
+  if (custom || ((p.topBarFilled || t.fillTopBar) && !t.oneBit))
     fillRect(0, 0, width(), barHeight, custom ? static_cast<uint16_t>(screen->topBarColor) : t.topBar);
   else
   {

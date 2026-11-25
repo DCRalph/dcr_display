@@ -17,4 +17,15 @@ namespace Draw
   void battery(int16_t x, int16_t y, int16_t w, int16_t h, int percent, uint16_t color);
   /** A ring 2 px outside `r`, for keyboard and button focus. */
   void focusRing(const Rect &r, int16_t radius);
+
+  /**
+   * A control face at x, y on a shadow of its own fill, theme().depth px lower;
+   * keep that much free below. Pressed, the face sits on the shadow. Flat at depth 0
+   * and on 1-bit panels.
+   */
+  void raised(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t fill, bool pressed = false);
+  /** A minus or plus `size` px across centred on cx, cy, in bars that stay legible at any size. */
+  void sign(int16_t cx, int16_t cy, int16_t size, bool plus, uint16_t color);
+  /** A radio mark of radius r: a ring, filled with a dot when on. */
+  void radio(int16_t cx, int16_t cy, int16_t r, bool on, uint16_t ring, uint16_t dot, uint16_t background);
 }

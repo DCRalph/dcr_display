@@ -163,25 +163,58 @@ redraws every frame.
 
 ## Look and themes
 
-Flat surfaces on a dark background with one accent colour: an inset rounded
-highlight for the selected menu row, switches for toggles, chevrons for
-navigation, a hairline top bar with a battery icon, card popups and pill
-buttons. Colour panels use FreeSans for the Body, Title and XLarge roles
-(TFT_eSPI with `LOAD_GFXFF`, or Adafruit GFX); Small and `setTextSize` keep the
-built-in 5x7 font, so existing app screens look as before.
+Grouped cards on a soft background with one accent colour: menu rows share a
+card split by hairlines, the selected row is a rounded highlight, toggles are
+switches, and controls can sit raised on a solid shadow. Colour panels use
+FreeSans for the Body, Title and XLarge roles (TFT_eSPI with `LOAD_GFXFF`, or
+Adafruit GFX); Small and `setTextSize` keep the built-in 5x7 font.
 
-- `Theme::dark()` (default on colour), `Theme::light()` and `Theme::mono()`
-  (default on 1-bit, where focus and selection invert). Set with
-  `display.setTheme`. A screen's `topBarColor` still fills its bar.
+Built-in themes, set with `display.setTheme(Theme::bactosure())`:
+
+| Theme | Look |
+| --- | --- |
+| `dark()` | default on colour panels; flat, blue accent |
+| `light()` | flat, white cards |
+| `bactosure()` | the Bactosure bioreactor: dark-blue bar, pastel raised controls, dark-blue labels |
+| `midnight()` | the bioreactor's engineering screens: black, slate raised controls |
+| `contrast()` | black and white with a yellow focus, for sunlight |
+| `mono()` | default on 1-bit panels; inversion instead of fills |
+
+A theme is a value: copy a preset and change fields. Besides colours it sets:
+
+- `depth`: px raised controls (buttons, keys, cards, popups, -/+ keys) sit above a
+  shadow of their own fill at `shadowPercent` brightness. 0 is flat; ignored on 1-bit.
+- `fillTopBar`: fill the top bar with `topBar` on any panel size.
+- `switchOn` / `switchKnob`: switch colours.
+- Defaults for how menus and editors render, below.
+
+### Menus and editors
+
+Each setting has a theme default and a per-element override; `Theme` (the
+enum's first value) means "use the theme's".
+
+| Element | Options | Override |
+| --- | --- | --- |
+| Menu layout | `MenuLook::Grouped` (rows in one raised card), `Flat` (rows on the background) | `menu.setLook(...)` |
+| Number editor | `NumberEdit::Expand` (the row grows: large value between big -/+ keys over a min-max bar), `Inline` (a raised - value + pill at the row's end) | `item.setEditStyle(...)` |
+| Select editor | `SelectEdit::Expand` (the row grows into a segmented control), `Sheet` (a sheet of every option rises from the bottom), `Inline` (a raised < value > pill) | `item.setEditStyle(...)` |
+
+Colour themes default to Grouped, Expand and Expand; `mono()` keeps Flat and
+Inline, which suit 64 px panels. An Expand select whose options will not fit
+side by side edits inline instead. Every editor takes the encoder, buttons and
+touch: navigation steps the value (Up moves up a sheet's list), select or back
+finishes, and a tap on the editor's keys, segments or options acts on them while
+a tap anywhere else finishes editing.
+
 - Text roles: `Small`, `Body`, `Title`, `XLarge`. Drivers choose the face per
   role: `setRoleFont` on ILI9341 and on TFT_eSPI with `LOAD_GFXFF`,
   `setRoleScale` on TFT_eSPI without it, `fonts` on U8g2. `setTextScale` keeps
   legacy integer sizes working.
 - `DisplayProfile` and `MenuStyle::Metrics` set chrome geometry from the panel
   size. Override them after `begin`, or replace the top bar with
-  `setTopBarRenderer`.
-- `Draw::` has the shared pieces (switch, chevron, battery, focus ring) for
-  screens that want to match.
+  `setTopBarRenderer`. A screen's `topBarColor` still fills its bar.
+- `Draw::` has the shared pieces (raised surfaces, switch, chevron, -/+ signs,
+  radio marks, battery, focus ring) for screens that want to match.
 
 ## Animation
 
@@ -214,7 +247,8 @@ unbuffered panels, where every frame would flicker.
 ## UI test screens
 
 `UiTest::RootScreen` reaches screens that exercise every feature on the app's
-own panel and inputs: theme and motion switches, menu items, components
+own panel and inputs: a picker for every built-in theme, a motion switch, menu
+items with each editor style side by side and a per-menu look switch, components
 (buttons, switches, a slider), gestures, easing curves, popups (including one
 shown from another task), the keyboard, a live input event log, drawing
 primitives and datums, redraw policy, and a background task with a watchdog

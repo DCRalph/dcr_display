@@ -29,10 +29,12 @@ void Draw::switchGlyph(int16_t x, int16_t y, int16_t w, int16_t h, float on, boo
     return;
   }
 
-  const uint16_t onTrack = onFill ? t.onAccent : t.accent;
+  // On a highlighted row whose fill is the switch colour, the track turns to the row's ink.
+  const bool clash = onFill && t.switchOn == t.highlight;
+  const uint16_t onTrack = clash ? t.highlightText : t.switchOn;
   const uint16_t track = Color::blend(t.border, onTrack, static_cast<uint8_t>(on * 255));
   d.fillRoundRect(x, y, w, h, r, track);
-  d.fillRoundRect(knobX, y + inset, knob, knob, knob / 2, onFill && on > 0.5f ? t.accent : Color::White);
+  d.fillRoundRect(knobX, y + inset, knob, knob, knob / 2, clash && on > 0.5f ? t.highlight : t.switchKnob);
 }
 
 void Draw::chevron(int16_t x, int16_t cy, int16_t size, bool right, uint16_t color)
@@ -68,4 +70,45 @@ void Draw::focusRing(const Rect &r, int16_t radius)
   const Theme &t = d.theme();
   d.drawRoundRect(r.x - 2, r.y - 2, r.w + 4, r.h + 4, radius + 2,
                   t.oneBit ? t.text : Color::blend(t.accent, Color::White, 110));
+}
+
+void Draw::raised(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t fill, bool pressed)
+{
+  Display &d = Display::active();
+  const Theme &t = d.theme();
+  const int16_t depth = t.oneBit ? 0 : t.depth;
+  if (depth == 0)
+  {
+    d.fillRoundRect(x, y, w, h, r, fill);
+    return;
+  }
+  if (pressed)
+  {
+    d.fillRoundRect(x, y + depth, w, h, r, fill);
+    return;
+  }
+  d.fillRoundRect(x, y + depth, w, h, r, t.shadowOf(fill));
+  d.fillRoundRect(x, y, w, h, r, fill);
+}
+
+void Draw::sign(int16_t cx, int16_t cy, int16_t size, bool plus, uint16_t color)
+{
+  Display &d = Display::active();
+  const int16_t bar = max<int16_t>(2, size / 6);
+  d.fillRect(cx - size / 2, cy - bar / 2, size, bar, color);
+  if (plus)
+    d.fillRect(cx - bar / 2, cy - size / 2, bar, size, color);
+}
+
+void Draw::radio(int16_t cx, int16_t cy, int16_t r, bool on, uint16_t ring, uint16_t dot, uint16_t background)
+{
+  Display &d = Display::active();
+  d.fillRoundRect(cx - r, cy - r, 2 * r, 2 * r, r, ring);
+  const int16_t inner = r - 2;
+  d.fillRoundRect(cx - inner, cy - inner, 2 * inner, 2 * inner, inner, background);
+  if (on)
+  {
+    const int16_t dr = max<int16_t>(2, r / 2);
+    d.fillRoundRect(cx - dr, cy - dr, 2 * dr, 2 * dr, dr, dot);
+  }
 }

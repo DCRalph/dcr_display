@@ -55,7 +55,40 @@ namespace
   MenuItemNavigate rootWidgets("Components", &UiTest::WidgetsScreen);
   MenuItemNavigate rootGestures("Gestures", &UiTest::GesturesScreen);
   MenuItemNavigate rootAnimation("Animation", &UiTest::AnimationScreen);
-  MenuItemSelect rootTheme("Theme", {"Dark", "Light", "Mono"});
+  MenuItemSelect rootTheme("Theme", {"Dark", "Light", "Bactosure", "Midnight", "Contrast", "Mono"});
+  constexpr int kMonoTheme = 5;
+  constexpr int kThemeCount = 6;
+
+  Theme themeAt(int i)
+  {
+    switch (i)
+    {
+    case 1:
+      return Theme::light();
+    case 2:
+      return Theme::bactosure();
+    case 3:
+      return Theme::midnight();
+    case 4:
+      return Theme::contrast();
+    case kMonoTheme:
+      return Theme::mono();
+    default:
+      return Theme::dark();
+    }
+  }
+
+  // Which preset the display is showing, so the picker starts on it; 0 (Dark) if none.
+  int themeIndexOf(const Theme &t)
+  {
+    for (int i = 0; i < kThemeCount; i++)
+    {
+      const Theme p = themeAt(i);
+      if (p.background == t.background && p.accent == t.accent && p.highlight == t.highlight && p.oneBit == t.oneBit)
+        return i;
+    }
+    return 0;
+  }
   bool gMotion = true;
   MenuItemToggle rootMotion("Motion", &gMotion);
   MenuItemNavigate rootKeyboard("Keyboard", &UiTest::KeyboardScreen);
@@ -76,13 +109,13 @@ namespace
       rootTheme.setOnChange([]()
                             {
                               Display &d = Display::active();
-                              const int i = d.colorDepth() == 1 ? 2 : rootTheme.getCurrentIndex();
+                              const int i = d.colorDepth() == 1 ? kMonoTheme : rootTheme.getCurrentIndex();
                               rootTheme.setCurrentIndex(i);
-                              d.setTheme(i == 1 ? Theme::light() : i == 2 ? Theme::mono() : Theme::dark()); });
+                              d.setTheme(themeAt(i)); });
       rootMotion.setOnChange([]()
                              { Display::active().setAnimations(gMotion); });
     }
-    rootTheme.setCurrentIndex(Display::active().theme().oneBit ? 2 : (Display::active().theme().background == Theme::light().background ? 1 : 0));
+    rootTheme.setCurrentIndex(themeIndexOf(Display::active().theme()));
     gMotion = Display::active().animationsEnabled();
     rootPanel = String(Display::active().width()) + "x" + Display::active().height() + " " + Display::active().colorDepth() + "b";
     rootModes = String(Display::active().driver()->buffered() ? "buf" : "direct") + (Inputs::hasPointer() ? " touch" : "");
@@ -106,6 +139,12 @@ namespace
   MenuItemNumber<uint8_t> byteItem("Byte +16", &gByte, 0, 255, 16);
   MenuItemNumber<uint32_t> uptimeItem("Uptime", &gUptime);
   MenuItemSelect selectItem("Select", {"Red", "Green", "Blue"});
+  // Each editor style side by side; the unnamed ones follow the theme.
+  int gInlineNum = 50;
+  MenuItemNumber<int> inlineNumItem("Inline num", &gInlineNum, 0, 100, 5);
+  MenuItemSelect sheetItem("Sheet", {"Celsius", "Fahrenheit", "Kelvin", "Rankine", "Reaumur"});
+  MenuItemSelect inlineSelItem("Inline sel", {"Low", "Mid", "High"});
+  MenuItemSelect lookItem("Look", {"Theme", "Flat", "Grouped"});
   MenuItemAction clicksItem("Clicks", 1, []()
                             { gLast = "1 click"; });
   MenuItemToggle hideItem("Hide next", &gHide);
@@ -140,9 +179,17 @@ namespace
     colourItem.setTextColor(Color::Orange);
     colourItem.setBgColor(Color::Orange);
 
-    for (MenuItem *item : std::initializer_list<MenuItem *>{&itemsBack, &lastItem, &toggleItem, &intItem, &floatItem,
-                                                            &byteItem, &uptimeItem, &selectItem, &clicksItem, &hideItem,
-                                                            &hiddenItem, &colourItem, &submenuItem})
+    inlineNumItem.setEditStyle(NumberEdit::Inline);
+    sheetItem.setEditStyle(SelectEdit::Sheet);
+    inlineSelItem.setEditStyle(SelectEdit::Inline);
+    lookItem.setOnChange([]()
+                         {
+                           const MenuLook looks[] = {MenuLook::Theme, MenuLook::Flat, MenuLook::Grouped};
+                           itemsMenu.setLook(looks[lookItem.getCurrentIndex()]); });
+    for (MenuItem *item : std::initializer_list<MenuItem *>{
+             &itemsBack, &lastItem, &toggleItem, &intItem, &floatItem, &inlineNumItem, &selectItem,
+             &sheetItem, &inlineSelItem, &lookItem, &byteItem, &uptimeItem, &clicksItem, &hideItem, &hiddenItem,
+             &colourItem, &submenuItem})
       itemsMenu.addMenuItem(item);
     itemsSubmenu.addMenuItem(&subBack);
     itemsSubmenu.addMenuItem(&subToggle);
