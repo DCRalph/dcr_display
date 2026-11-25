@@ -47,6 +47,25 @@ void FocusGroup::move(int steps)
   focused = static_cast<size_t>(next);
 }
 
+void FocusGroup::moveVertical(int steps)
+{
+  if (buttons.empty())
+    return;
+  // Column-major order: down the first column, then the next.
+  std::vector<size_t> order;
+  order.reserve(buttons.size());
+  for (size_t col = 0; col < columns; col++)
+    for (size_t i = col; i < buttons.size(); i += columns)
+      order.push_back(i);
+
+  size_t pos = 0;
+  for (size_t i = 0; i < order.size(); i++)
+    if (order[i] == focused)
+      pos = i;
+  const int n = static_cast<int>(order.size());
+  focused = order[((static_cast<int>(pos) + steps) % n + n) % n];
+}
+
 bool FocusGroup::update()
 {
   if (buttons.empty())
@@ -67,10 +86,10 @@ bool FocusGroup::update()
       move(1);
       break;
     case InputKind::Up:
-      move(-static_cast<int>(columns));
+      moveVertical(-1);
       break;
     case InputKind::Down:
-      move(columns);
+      moveVertical(1);
       break;
     case InputKind::Select:
       if (e.value == 1)
@@ -163,6 +182,11 @@ bool Keyboard::firstColOfKey(uint8_t row, uint8_t col) const
   return false;
 }
 
+bool Keyboard::focusable(uint8_t row, uint8_t col) const
+{
+  return firstColOfKey(row, col) && (row == kRows - 1 || charAt(row, col) != 0);
+}
+
 char Keyboard::charAt(uint8_t row, uint8_t col) const
 {
   if (row >= kRows - 1)
@@ -234,19 +258,37 @@ void Keyboard::activate(uint8_t row, uint8_t col)
 
 void Keyboard::moveFocus(int dRow, int dCol)
 {
-  int row = (static_cast<int>(focusRow) + dRow + kRows) % kRows;
-  int col = static_cast<int>(focusCol);
   if (dCol != 0)
   {
     // Step over the extra columns a wide control key spans.
+    int col = focusCol;
     do
       col = (col + dCol + kCols) % kCols;
-    while (!firstColOfKey(static_cast<uint8_t>(row), static_cast<uint8_t>(col)));
+    while (!focusable(focusRow, static_cast<uint8_t>(col)));
+    focusCol = cursorCol = static_cast<uint8_t>(col);
+    return;
   }
+
+  int row = static_cast<int>(focusRow) + dRow;
+  int col = cursorCol;
+  if (row >= kRows)
+  {
+    row = 0;
+    col = (col + 1) % kCols;
+  }
+  else if (row < 0)
+  {
+    row = kRows - 1;
+    col = (col + kCols - 1) % kCols;
+  }
+  cursorCol = static_cast<uint8_t>(col);
   focusRow = static_cast<uint8_t>(row);
-  focusCol = static_cast<uint8_t>(col);
+  focusCol = cursorCol;
   while (!firstColOfKey(focusRow, focusCol))
     focusCol--;
+  // Blank keys on a sparse layer: keep going the same way. The control row is never blank.
+  if (!focusable(focusRow, focusCol))
+    moveFocus(dRow, 0);
 }
 
 void Keyboard::linearStep(int steps)
@@ -268,9 +310,9 @@ void Keyboard::linearStep(int steps)
         col = kCols - 1;
         row = (row + kRows - 1) % kRows;
       }
-    } while (!firstColOfKey(static_cast<uint8_t>(row), static_cast<uint8_t>(col)));
+    } while (!focusable(static_cast<uint8_t>(row), static_cast<uint8_t>(col)));
     focusRow = static_cast<uint8_t>(row);
-    focusCol = static_cast<uint8_t>(col);
+    focusCol = cursorCol = static_cast<uint8_t>(col);
   }
 }
 
@@ -312,7 +354,7 @@ bool Keyboard::update()
           if (firstColOfKey(row, col) && keyRect(row, col).contains(e.x, e.y))
           {
             focusRow = row;
-            focusCol = col;
+            focusCol = cursorCol = col;
             activate(row, col);
           }
         }
