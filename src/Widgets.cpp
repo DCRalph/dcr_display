@@ -4,19 +4,19 @@
 
 void Button::draw(bool focused) const
 {
-  const Theme &t = display.theme();
-  const DisplayProfile &p = display.profile();
+  const Theme &t = Display::active().theme();
+  const DisplayProfile &p = Display::active().profile();
   const uint16_t fill = focused ? t.focus : t.widget;
   const uint16_t ink = focused ? t.focusText : (enabled ? t.widgetText : t.mutedText);
   const int32_t r = p.popupRadius / 2;
 
-  display.fillRoundRect(bounds.x, bounds.y, bounds.w, bounds.h, r, fill);
-  display.drawRoundRect(bounds.x, bounds.y, bounds.w, bounds.h, r, focused ? t.focusText : t.text);
+  Display::active().fillRoundRect(bounds.x, bounds.y, bounds.w, bounds.h, r, fill);
+  Display::active().drawRoundRect(bounds.x, bounds.y, bounds.w, bounds.h, r, focused ? t.focusText : t.text);
 
-  display.setTextRole(bounds.h >= 28 ? TextRole::Body : TextRole::Small);
-  display.setTextColor(ink);
-  display.setTextDatum(Datum::MiddleCenter);
-  display.drawString(label, bounds.x + bounds.w / 2, bounds.y + bounds.h / 2);
+  Display::active().setTextRole(bounds.h >= 28 ? TextRole::Body : TextRole::Small);
+  Display::active().setTextColor(ink);
+  Display::active().setTextDatum(Datum::MiddleCenter);
+  Display::active().drawString(label, bounds.x + bounds.w / 2, bounds.y + bounds.h / 2);
 }
 
 void Button::press() const
@@ -370,10 +370,10 @@ bool Keyboard::update()
 
 void Keyboard::draw()
 {
-  const Theme &t = display.theme();
+  const Theme &t = Display::active().theme();
   const bool small = bounds.h / kRows < 14;
-  display.setTextRole(small ? TextRole::Small : TextRole::Body);
-  display.setTextDatum(Datum::MiddleCenter);
+  Display::active().setTextRole(small ? TextRole::Small : TextRole::Body);
+  Display::active().setTextDatum(Datum::MiddleCenter);
 
   char buf[2];
   for (uint8_t row = 0; row < kRows; row++)
@@ -389,12 +389,12 @@ void Keyboard::draw()
       const Rect r = keyRect(row, col);
       const bool focused = row == focusRow && col == focusCol;
       if (focused)
-        display.fillRect(r.x, r.y, r.w, r.h, t.highlight);
+        Display::active().fillRect(r.x, r.y, r.w, r.h, t.highlight);
       else if (!small)
-        display.drawRect(r.x, r.y, r.w, r.h, t.widget);
+        Display::active().drawRect(r.x, r.y, r.w, r.h, t.widget);
 
-      display.setTextColor(focused ? t.highlightText : t.text);
-      display.drawString(label, r.x + r.w / 2, r.y + r.h / 2);
+      Display::active().setTextColor(focused ? t.highlightText : t.text);
+      Display::active().drawString(label, r.x + r.w / 2, r.y + r.h / 2);
     }
   }
 }

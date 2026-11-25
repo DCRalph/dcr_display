@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <vector>
 
 // Hardware-independent input. Sources (encoder, buttons, joystick, touch) turn
 // their hardware into InputEvents; menus, popups and widgets only see events.
@@ -45,6 +46,18 @@ private:
   size_t count_ = 0;
 };
 
+class InputSource;
+
+// The sources and this frame's events for one display.
+struct InputSet
+{
+  std::vector<InputSource *> sources;
+  InputQueue queue;
+  InputQueue injected;
+  bool polled = false;
+  uint32_t lastEventMs = 0;
+};
+
 class InputSource
 {
 public:
@@ -55,6 +68,8 @@ public:
   virtual bool isPointer() const { return false; }
 };
 
+// Each Display has its own sources; these act on Display::active(), which is the
+// global `display` outside a frame. Use display2.addInput() for a second screen.
 namespace Inputs
 {
   void addSource(InputSource &source);

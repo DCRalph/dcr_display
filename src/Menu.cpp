@@ -4,11 +4,6 @@
 
 namespace MenuStyle
 {
-  namespace
-  {
-    Metrics gMetrics{};
-  }
-
   Metrics Metrics::forPanel(uint16_t width, uint16_t height, uint8_t colorDepth) noexcept
   {
     Metrics m;
@@ -34,21 +29,22 @@ namespace MenuStyle
 
   void setMetrics(const Metrics &m) noexcept
   {
-    gMetrics = m;
+    Display::active().setMenuMetrics(m);
   }
 
   const Metrics &metrics() noexcept
   {
-    return gMetrics;
+    return Display::active().menuMetrics();
   }
 
   DrawStyle drawStyle(MenuSize size)
   {
-    DrawStyle s = size == MenuSize::Small    ? gMetrics.small
-                  : size == MenuSize::Medium ? gMetrics.medium
-                                             : gMetrics.large;
-    if (Inputs::hasPointer() && s.lineHeight < gMetrics.minTouchRowHeight)
-      s.lineHeight = gMetrics.minTouchRowHeight;
+    const Metrics &m = metrics();
+    DrawStyle s = size == MenuSize::Small    ? m.small
+                  : size == MenuSize::Medium ? m.medium
+                                             : m.large;
+    if (Inputs::hasPointer() && s.lineHeight < m.minTouchRowHeight)
+      s.lineHeight = m.minTouchRowHeight;
     return s;
   }
 
@@ -59,13 +55,13 @@ namespace MenuStyle
 
   uint16_t contentTopY() noexcept
   {
-    return gMetrics.contentTopY;
+    return metrics().contentTopY;
   }
 
   uint8_t itemsPerPage(MenuSize size, uint16_t displayHeight)
   {
-    const int h = displayHeight == 0 ? gMetrics.fallbackDisplayHeight : displayHeight;
-    const int avail = h - static_cast<int>(gMetrics.contentTopY);
+    const int h = displayHeight == 0 ? metrics().fallbackDisplayHeight : displayHeight;
+    const int avail = h - static_cast<int>(metrics().contentTopY);
     const int row = lineHeight(size);
     const int n = row > 0 && avail > 0 ? avail / row : 1;
     return static_cast<uint8_t>(n < 1 ? 1 : (n > 255 ? 255 : n));
@@ -73,7 +69,7 @@ namespace MenuStyle
 
   void editTargets(int16_t rowY, int16_t rowH, Rect &minus, Rect &plus)
   {
-    const int16_t right = static_cast<int16_t>(display.width()) - 4;
+    const int16_t right = static_cast<int16_t>(Display::active().width()) - 4;
     plus = Rect{static_cast<int16_t>(right - rowH), rowY, rowH, rowH};
     minus = Rect{static_cast<int16_t>(plus.x - rowH - 2), rowY, rowH, rowH};
   }
@@ -138,46 +134,46 @@ void MenuItem::draw(int16_t x, int16_t y, bool active)
 
 void MenuItem::drawRow(int16_t x, int16_t y, bool active)
 {
-  const Theme &t = display.theme();
+  const Theme &t = Display::active().theme();
   const MenuStyle::DrawStyle style = MenuStyle::drawStyle(size());
-  const int16_t w = static_cast<int16_t>(display.width()) - 4;
+  const int16_t w = static_cast<int16_t>(Display::active().width()) - 4;
   const int16_t h = static_cast<int16_t>(style.lineHeight);
   const bool editing = active && isEditing();
 
   const uint16_t text = resolve(textColor, t.text);
   uint16_t ink = text;
   if (editing)
-    display.drawRoundRect(x, y, w, h, style.radius, text);
+    Display::active().drawRoundRect(x, y, w, h, style.radius, text);
   else if (active)
   {
-    display.fillRoundRect(x, y, w, h, style.radius, resolve(bgColor, t.highlight));
+    Display::active().fillRoundRect(x, y, w, h, style.radius, resolve(bgColor, t.highlight));
     ink = resolve(activeTextColor, t.highlightText);
   }
 
-  display.setTextRole(style.role);
-  display.setTextColor(ink);
-  display.setTextDatum(Datum::MiddleLeft);
+  Display::active().setTextRole(style.role);
+  Display::active().setTextColor(ink);
+  Display::active().setTextDatum(Datum::MiddleLeft);
   const int16_t midY = y + h / 2;
-  display.drawString(name, x + 2, midY);
+  Display::active().drawString(name, x + 2, midY);
 
   int16_t valueRight = x + w - 2;
   if (editing && Inputs::hasPointer())
   {
     Rect minus, plus;
     MenuStyle::editTargets(y, h, minus, plus);
-    display.setTextDatum(Datum::MiddleCenter);
-    display.drawRect(minus.x, minus.y + 1, minus.w, minus.h - 2, text);
-    display.drawRect(plus.x, plus.y + 1, plus.w, plus.h - 2, text);
-    display.drawString("-", minus.x + minus.w / 2, midY);
-    display.drawString("+", plus.x + plus.w / 2, midY);
+    Display::active().setTextDatum(Datum::MiddleCenter);
+    Display::active().drawRect(minus.x, minus.y + 1, minus.w, minus.h - 2, text);
+    Display::active().drawRect(plus.x, plus.y + 1, plus.w, plus.h - 2, text);
+    Display::active().drawString("-", minus.x + minus.w / 2, midY);
+    Display::active().drawString("+", plus.x + plus.w / 2, midY);
     valueRight = minus.x - 4;
   }
 
   const String value = valueText();
   if (value.length())
   {
-    display.setTextDatum(Datum::MiddleRight);
-    display.drawString(value, valueRight, midY);
+    Display::active().setTextDatum(Datum::MiddleRight);
+    Display::active().drawString(value, valueRight, midY);
   }
 }
 
@@ -196,7 +192,7 @@ MenuItemNavigate::MenuItemNavigate(String name, const Screen2 *target) : MenuIte
 void MenuItemNavigate::addRoute(int8_t clicksToRun, const Screen2 *target)
 {
   addFunc(clicksToRun, [target]()
-          { screenManager.setScreen(target); });
+          { Display::active().screens().setScreen(target); });
 }
 
 MenuItemBack::MenuItemBack() : MenuItem("Back")
@@ -207,7 +203,7 @@ MenuItemBack::MenuItemBack() : MenuItem("Back")
             if (parent)
               parent->back();
             else
-              screenManager.back(); });
+              Display::active().screens().back(); });
 }
 
 MenuItemToggle::MenuItemToggle(String name, bool *value, bool isMutable)
@@ -330,7 +326,7 @@ void Menu::addMenuItem(MenuItem *item)
 
 uint8_t Menu::getItemsPerPage() const
 {
-  return manualRowsPerPage ? manualRowsPerPage : MenuStyle::itemsPerPage(menuSize, display.height());
+  return manualRowsPerPage ? manualRowsPerPage : MenuStyle::itemsPerPage(menuSize, Display::active().height());
 }
 
 void Menu::setActive(uint16_t index)
@@ -397,7 +393,7 @@ void Menu::back()
   if (parentMenu)
     parentMenu->clearActiveSubmenu();
   else
-    screenManager.back();
+    Display::active().screens().back();
 }
 
 void Menu::update()
@@ -563,11 +559,11 @@ void Menu::draw()
 
   if (visible.size() > rows)
   {
-    const int w = display.width();
-    const int trackH = display.height() - top;
+    const int w = Display::active().width();
+    const int trackH = Display::active().height() - top;
     const int thumbH = max(3, trackH * rows / static_cast<int>(visible.size()));
     const int thumbY = top + (trackH - thumbH) * topVisible / static_cast<int>(visible.size() - rows);
-    display.drawLine(w - 2, top, w - 2, display.height() - 1, display.theme().text);
-    display.fillRect(w - 3, thumbY, 3, thumbH, display.theme().text);
+    Display::active().drawLine(w - 2, top, w - 2, Display::active().height() - 1, Display::active().theme().text);
+    Display::active().fillRect(w - 3, thumbY, 3, thumbH, Display::active().theme().text);
   }
 }

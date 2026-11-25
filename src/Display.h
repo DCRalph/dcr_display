@@ -5,6 +5,8 @@
 #include "Color.h"
 #include "DisplayDriver.h"
 #include "DisplayProfile.h"
+#include "Input.h"
+#include "MenuMetrics.h"
 #include "Theme.h"
 
 class ScreenManager;
@@ -18,12 +20,30 @@ using BatteryProvider = int (*)();
 
 // Drawing facade over one DisplayDriver, plus the frame loop. App code and the
 // library's own chrome draw through this, never through the driver directly.
+//
+// Several displays can run side by side, each with its own ScreenManager, menu
+// metrics and input sources. Render them all from one task.
 class Display
 {
 public:
+  /**
+   * The display whose frame is running; the global `display` otherwise. Menus,
+   * popups and widgets draw on and navigate this one.
+   */
+  static Display &active();
+
   /** Starts the driver and seeds theme, profile and menu metrics from the panel. */
   bool begin(DisplayDriver &driver, ScreenManager *screenManager = nullptr);
   void setScreenManager(ScreenManager *screenManager);
+  ScreenManager &screens() const;
+
+  /** Input for this display only, e.g. a touch panel on a second screen. */
+  void addInput(InputSource &source);
+  void removeInput(InputSource &source);
+  InputSet &inputs() { return inputSet; }
+
+  MenuStyle::Metrics &menuMetrics() { return metrics; }
+  void setMenuMetrics(const MenuStyle::Metrics &m);
 
   bool isReady() const { return ready; }
   DisplayDriver *driver() const { return panel; }
@@ -100,6 +120,8 @@ private:
 
   Theme currentTheme;
   DisplayProfile displayProfile;
+  MenuStyle::Metrics metrics;
+  InputSet inputSet;
   TopBarRenderer topBarRenderer = nullptr;
   BatteryProvider batteryProvider = nullptr;
 

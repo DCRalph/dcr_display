@@ -2,8 +2,19 @@
 
 #if __has_include(<Adafruit_ILI9341.h>)
 
-ILI9341DisplayDriver::ILI9341DisplayDriver(uint8_t spiBus, Pins pins, uint8_t rotation, uint32_t spiFrequency)
-    : bus(spiBus), panel(&bus, pins.dc, pins.cs, pins.rst), pins(pins), rotation(rotation), spiFrequency(spiFrequency) {}
+#undef LOG_TAG
+#define LOG_TAG "ILI9341"
+#include <dcr_Logger.h>
+
+ILI9341DisplayDriver::ILI9341DisplayDriver(uint8_t spiBus, Pins pins, uint8_t rotation, uint32_t spiFrequency,
+                                           bool buffered)
+    : bus(spiBus), panel(&bus, pins.dc, pins.cs, pins.rst), wantBuffer(buffered), pins(pins), rotation(rotation),
+      spiFrequency(spiFrequency) {}
+
+ILI9341DisplayDriver::~ILI9341DisplayDriver()
+{
+  delete canvas;
+}
 
 bool ILI9341DisplayDriver::begin()
 {
@@ -13,7 +24,23 @@ bool ILI9341DisplayDriver::begin()
   panel.begin(spiFrequency);
   panel.setRotation(rotation);
   panel.fillScreen(ILI9341_BLACK);
+  if (wantBuffer)
+  {
+    canvas = new GFXcanvas16(panel.width(), panel.height());
+    if (canvas->getBuffer() == nullptr)
+    {
+      delete canvas;
+      canvas = nullptr;
+      debugW("No memory for a frame buffer; drawing direct to the panel");
+    }
+  }
   return true;
+}
+
+void ILI9341DisplayDriver::push()
+{
+  if (canvas)
+    panel.drawRGBBitmap(0, 0, canvas->getBuffer(), canvas->width(), canvas->height());
 }
 
 uint16_t ILI9341DisplayDriver::width() const
@@ -28,59 +55,59 @@ uint16_t ILI9341DisplayDriver::height() const
 
 void ILI9341DisplayDriver::drawPixel(int32_t x, int32_t y, uint16_t color)
 {
-  panel.drawPixel(x, y, color);
+  gfx().drawPixel(x, y, color);
 }
 
 void ILI9341DisplayDriver::fillRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t color)
 {
-  panel.fillRect(x, y, w, h, color);
+  gfx().fillRect(x, y, w, h, color);
 }
 
 void ILI9341DisplayDriver::fillScreen(uint16_t color)
 {
-  panel.fillScreen(color);
+  gfx().fillScreen(color);
 }
 
 void ILI9341DisplayDriver::drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t color)
 {
-  panel.drawLine(x0, y0, x1, y1, color);
+  gfx().drawLine(x0, y0, x1, y1, color);
 }
 
 void ILI9341DisplayDriver::drawRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t color)
 {
-  panel.drawRect(x, y, w, h, color);
+  gfx().drawRect(x, y, w, h, color);
 }
 
 void ILI9341DisplayDriver::drawRoundRect(int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, uint16_t color)
 {
-  panel.drawRoundRect(x, y, w, h, r, color);
+  gfx().drawRoundRect(x, y, w, h, r, color);
 }
 
 void ILI9341DisplayDriver::fillRoundRect(int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, uint16_t color)
 {
-  panel.fillRoundRect(x, y, w, h, r, color);
+  gfx().fillRoundRect(x, y, w, h, r, color);
 }
 
 void ILI9341DisplayDriver::setFont(TextRole role)
 {
   textScale = defaultTextScaleFor(role);
-  panel.setTextSize(textScale);
+  gfx().setTextSize(textScale);
 }
 
 void ILI9341DisplayDriver::setTextScale(uint8_t size)
 {
   textScale = size ? size : 1;
-  panel.setTextSize(textScale);
+  gfx().setTextSize(textScale);
 }
 
 void ILI9341DisplayDriver::drawText(const char *text, int32_t x, int32_t y, uint16_t fg, int32_t bg)
 {
   if (bg == kThemeColor)
-    panel.setTextColor(fg);
+    gfx().setTextColor(fg);
   else
-    panel.setTextColor(fg, static_cast<uint16_t>(bg));
-  panel.setCursor(x, y);
-  panel.print(text);
+    gfx().setTextColor(fg, static_cast<uint16_t>(bg));
+  gfx().setCursor(x, y);
+  gfx().print(text);
 }
 
 // Built-in 5x7 font in a 6x8 cell.
