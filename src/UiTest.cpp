@@ -143,6 +143,9 @@ namespace
   int gInlineNum = 50;
   MenuItemNumber<int> inlineNumItem("Inline num", &gInlineNum, 0, 100, 5);
   MenuItemSelect sheetItem("Sheet", {"Celsius", "Fahrenheit", "Kelvin", "Rankine", "Reaumur"});
+  // More options than fit: the sheet scrolls.
+  MenuItemSelect longSheetItem("Log every", {"1 s", "2 s", "5 s", "10 s", "15 s", "30 s", "1 min", "2 min", "5 min",
+                                             "10 min", "15 min", "30 min", "1 h", "2 h", "6 h", "12 h", "24 h"});
   MenuItemSelect inlineSelItem("Inline sel", {"Low", "Mid", "High"});
   MenuItemSelect lookItem("Look", {"Theme", "Flat", "Grouped"});
   MenuItemAction clicksItem("Clicks", 1, []()
@@ -182,6 +185,8 @@ namespace
 
     inlineNumItem.setEditStyle(NumberEdit::Inline);
     sheetItem.setEditStyle(SelectEdit::Sheet);
+    longSheetItem.setEditStyle(SelectEdit::Sheet);
+    longSheetItem.setCurrentIndex(6);
     inlineSelItem.setEditStyle(SelectEdit::Inline);
     lookItem.setOnChange([]()
                          {
@@ -189,7 +194,7 @@ namespace
                            itemsMenu.setLook(looks[lookItem.getCurrentIndex()]); });
     for (MenuItem *item : std::initializer_list<MenuItem *>{
              &itemsBack, &lastItem, &toggleItem, &intItem, &floatItem, &inlineNumItem, &selectItem,
-             &sheetItem, &inlineSelItem, &lookItem, &byteItem, &uptimeItem, &clicksItem, &hideItem, &hiddenItem,
+             &sheetItem, &longSheetItem, &inlineSelItem, &lookItem, &byteItem, &uptimeItem, &clicksItem, &hideItem, &hiddenItem,
              &colourItem, &submenuItem})
       itemsMenu.addMenuItem(item);
     itemsSubmenu.addMenuItem(&subBack);

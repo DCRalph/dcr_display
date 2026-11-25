@@ -206,7 +206,8 @@ side by side edits inline instead. Every editor takes the encoder, buttons and
 touch: navigation steps the value (Up moves up a sheet's list), select or back
 finishes, and a tap on the editor's keys, segments or options acts on them while
 a tap anywhere else finishes editing. A sheet also closes when its handle is
-dragged down or the sheet is swiped down.
+dragged down or the sheet is swiped down. A sheet with more options than fit
+scrolls: drag or flick its options, and a bar at its edge shows where you are.
 
 Popups and sheets dim what is behind them on colour panels whose driver
 implements `dimRect` (TFT_eSPI and ILI9341 with a frame buffer).

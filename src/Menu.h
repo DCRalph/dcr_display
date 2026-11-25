@@ -381,13 +381,21 @@ private:
   /** Segment strip of the Expand editor; false if the options do not fit side by side. */
   bool segmentLayout(Rect &strip) const;
   int optionAt(int16_t x, int16_t y) const;
+  bool sheetScrolls() const;
+  void scrollSheet(int steps);
 
   SelectEdit editStyle = SelectEdit::Theme;
   bool expandFallback = false; // Expand with options too wide for segments: edits inline
   // The sheet as last drawn, for taps: its box, the first option shown and option height.
   Rect sheet, sheetOptions;
   int sheetFirst = 0;
+  int sheetShown = 0;
   int16_t sheetOptionH = 0;
+  // Scrolling the options by touch, a whole option at a time like the menu. The
+  // window follows the current option only when that changes (keys, encoder).
+  int sheetSeenIndex = -1; // -1: not yet drawn since opening
+  bool sheetScrolling = false;
+  int16_t sheetScrollAccum = 0;
   // Dragging the sheet down by its handle: where the finger started, and how far down it is.
   Rect sheetGrip;
   bool sheetDragging = false;
