@@ -115,12 +115,12 @@ struct Theme
     Theme t;
     const uint16_t navy = Color::rgb(41, 57, 99);    // COL_DARK_BLUE
     const uint16_t sky = Color::rgb(90, 222, 255);   // COL_LIGHT_BLUE
-    t.background = Color::rgb(218, 226, 240);
+    t.background = Color::rgb(198, 210, 230);
     t.surface = t.popupBackground = Color::White;
     t.border = Color::rgb(140, 158, 186);
     t.track = Color::rgb(118, 134, 164);
     t.text = t.popupTitle = t.widgetText = navy;
-    t.mutedText = t.popupText = Color::rgb(88, 102, 126);
+    t.mutedText = t.popupText = Color::rgb(74, 88, 112);
     t.accent = t.popupProgress = navy;
     t.onAccent = Color::White;
     t.highlight = t.widget = t.focus = sky;

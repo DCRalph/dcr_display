@@ -113,6 +113,8 @@ public:
 
   /** Hide the top bar for the frame being drawn. Call from a screen's draw(). */
   void noTopBar();
+  /** Dim the top bar too, once drawn this frame: for an overlay the screen draws, like a sheet. */
+  void dimTopBar();
   void drawTopBar();
   void setTopBarRenderer(TopBarRenderer renderer) { topBarRenderer = renderer; }
   /** nullptr hides the battery readout. */
@@ -171,6 +173,7 @@ private:
   int32_t textBg = kThemeColor;
 
   bool showTopBar = true;
+  bool dimBar = false;
   bool dirty = true;
   bool animations = true;
   bool animationPending = false; // a tween is running, or its final frame is not drawn yet

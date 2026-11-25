@@ -209,8 +209,9 @@ a tap anywhere else finishes editing. A sheet also closes when its handle is
 dragged down or the sheet is swiped down. A sheet with more options than fit
 scrolls: drag or flick its options, and a bar at its edge shows where you are.
 
-Popups and sheets dim what is behind them on colour panels whose driver
-implements `dimRect` (TFT_eSPI and ILI9341 with a frame buffer).
+Popups and sheets dim the whole screen behind them, top bar included, on colour
+panels whose driver implements `dimRect` (TFT_eSPI and ILI9341 with a frame
+buffer). A screen drawing its own overlay calls `display.dimTopBar()` for the same.
 
 - Text roles: `Small`, `Body`, `Title`, `XLarge`. Drivers choose the face per
   role: `setRoleFont` on ILI9341 and on TFT_eSPI with `LOAD_GFXFF`,
