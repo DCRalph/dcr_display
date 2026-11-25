@@ -176,8 +176,9 @@ namespace
                           { gLast = "float " + String(gFloat, 2); });
     selectItem.setOnChange([]()
                            { gLast = selectItem.getSelectedOption(); });
-    colourItem.setTextColor(Color::Orange);
-    colourItem.setBgColor(Color::Orange);
+    // A deep orange: legible as text on light and dark cards alike.
+    colourItem.setTextColor(Color::rgb(206, 92, 0));
+    colourItem.setBgColor(Color::rgb(206, 92, 0));
 
     inlineNumItem.setEditStyle(NumberEdit::Inline);
     sheetItem.setEditStyle(SelectEdit::Sheet);
@@ -236,7 +237,7 @@ namespace
   {
     Display::active().setTextRole(TextRole::Small);
     const int16_t lh = Display::active().fontHeight() + 1;
-    drawLine("Back / 3 clicks to exit", top());
+    drawLine(Inputs::hasPointer() ? "Back, 3 clicks or long press to exit" : "Back / 3 clicks to exit", top());
     const int16_t rows = (Display::active().height() - top() - lh) / lh;
     for (int16_t i = 0; i < rows && i < static_cast<int16_t>(gLogCount); i++)
       drawLine(gLog[i], top() + lh * (i + 1));
@@ -251,7 +252,8 @@ namespace
   {
     for (const InputEvent &e : Inputs::events())
     {
-      if (e.kind == InputKind::Back || (e.kind == InputKind::Select && e.rawClicks == 3))
+      // Taps are logged, so a touch-only panel leaves on a long press.
+      if (e.kind == InputKind::Back || (e.kind == InputKind::Select && e.rawClicks == 3) || e.kind == InputKind::LongPress)
       {
         Display::active().screens().back();
         return;
@@ -309,7 +311,7 @@ namespace
   // ---------------------------------------------------------------- components
   bool gWifi = true, gSound = false;
   int gLevel = 60;
-  String gLastAction = "-";
+  String gLastAction; // shown once a control is used
   Button saveButton("Save", []()
                     { gLastAction = "Saved"; }, Button::Style::Primary);
   Button cancelButton("Cancel", []()
@@ -377,7 +379,8 @@ namespace
   {
     for (const InputEvent &e : Inputs::events())
     {
-      if (e.kind == InputKind::Back || (e.kind == InputKind::Select && e.rawClicks == 3))
+      // Taps are logged, so a touch-only panel leaves on a long press.
+      if (e.kind == InputKind::Back || (e.kind == InputKind::Select && e.rawClicks == 3) || e.kind == InputKind::LongPress)
       {
         Display::active().screens().back();
         return;
@@ -546,6 +549,16 @@ namespace
   String gTyped;
   bool gKeyboardBuilt = false;
 
+  // A boxed Body-text field on panels tall enough to spare it; small OLEDs
+  // keep a bare line so the keys stay big.
+  bool roomyField() { return Display::active().height() >= 160; }
+
+  int16_t fieldHeight()
+  {
+    Display::active().setTextRole(roomyField() ? TextRole::Body : TextRole::Small);
+    return Display::active().fontHeight() + (roomyField() ? 6 : 0);
+  }
+
   void keyboardEnter()
   {
     if (!gKeyboardBuilt)
@@ -562,14 +575,27 @@ namespace
       { Display::active().screens().back(); };
       keyboard.onCancel = keyboard.onDone;
     }
-    Display::active().setTextRole(TextRole::Small);
-    const int16_t y = top() + Display::active().fontHeight() + 4;
+    const int16_t y = top() + fieldHeight() + 4;
     keyboard.setBounds(Rect{0, y, static_cast<int16_t>(Display::active().width()), static_cast<int16_t>(Display::active().height() - y)});
   }
 
   void keyboardDraw()
   {
-    drawLine(gTyped + "_", top() + 1);
+    Display &d = Display::active();
+    const Theme &t = d.theme();
+    const int16_t h = fieldHeight(), y = top() + 2; // leaves the field's text role set
+    const int16_t inset = roomyField() ? 10 : 2;
+    if (roomyField())
+    {
+      d.fillRoundRect(4, y, d.width() - 8, h, 4, t.surface);
+      d.drawRoundRect(4, y, d.width() - 8, h, 4, t.border);
+    }
+    String shown = gTyped + "_"; // the end of long text, where typing happens
+    while (shown.length() > 1 && d.textWidth(shown) > d.width() - 2 * inset)
+      shown.remove(0, 1);
+    d.setTextColor(t.text);
+    d.setTextDatum(Datum::MiddleLeft);
+    d.drawString(shown, inset, y + h / 2);
     keyboard.draw();
   }
 
@@ -655,7 +681,7 @@ namespace
     drawLine("Idle redraw every 1 s", top() + 1);
     drawLine("Turn/press: redraws now", top() + 1 + lh);
     drawLine("Draws " + String(gDraws) + "  Updates " + String(gUpdates), top() + 1 + 2 * lh);
-    drawLine("Select/Back exits", top() + 1 + 3 * lh);
+    drawLine(Inputs::hasPointer() ? "Tap or Back exits" : "Select/Back exits", top() + 1 + 3 * lh);
   }
 
   void redrawUpdate()
@@ -727,7 +753,9 @@ namespace UiTest
   {
     Screen2 s = makeScreen("Menu items", []()
                            { itemsMenu.draw(); }, itemsUpdate, itemsEnter);
+    // A screen's own bar colour; dark ink, since white on orange is unreadable.
     s.topBarColor = Color::Orange;
+    s.topBarTextColor = Color::Black;
     return s;
   }();
 

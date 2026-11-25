@@ -34,14 +34,17 @@ struct Theme
 {
   uint16_t background = Color::rgb(10, 12, 16);
   uint16_t surface = Color::rgb(28, 32, 40); // cards, popups, sheets, idle keys
-  uint16_t border = Color::rgb(52, 58, 70);  // hairlines, outlines, switch tracks
+  uint16_t border = Color::rgb(52, 58, 70);  // hairlines and outlines
+  uint16_t track = Color::rgb(104, 112, 128); // switch-off, slider and range tracks: 3:1 on surface
   uint16_t text = Color::rgb(236, 240, 245);
-  uint16_t mutedText = Color::rgb(140, 148, 162);
-  uint16_t accent = Color::rgb(56, 128, 255);
-  uint16_t onAccent = Color::White; // text and glyphs drawn on accent
+  uint16_t mutedText = Color::rgb(150, 158, 172);
+  // A light accent with dark ink on it keeps both its text uses (on dark
+  // surfaces) and its fills (under dark ink) above 4.5:1.
+  uint16_t accent = Color::rgb(100, 162, 255);
+  uint16_t onAccent = Color::rgb(8, 12, 20); // text and glyphs drawn on accent
 
-  uint16_t highlight = Color::rgb(56, 128, 255); // active menu row
-  uint16_t highlightText = Color::White;
+  uint16_t highlight = Color::rgb(100, 162, 255); // active menu row
+  uint16_t highlightText = Color::rgb(8, 12, 20);
 
   uint16_t topBar = Color::rgb(18, 21, 27);
   uint16_t topBarText = Color::rgb(236, 240, 245);
@@ -49,15 +52,15 @@ struct Theme
   uint16_t popupBackground = Color::rgb(28, 32, 40);
   uint16_t popupText = Color::rgb(200, 206, 216);
   uint16_t popupTitle = Color::rgb(236, 240, 245);
-  uint16_t popupProgress = Color::rgb(56, 128, 255);
+  uint16_t popupProgress = Color::rgb(100, 162, 255);
 
-  uint16_t widget = Color::rgb(28, 32, 40); // idle button fill, -/+ keys
+  uint16_t widget = Color::rgb(48, 54, 68); // idle button fill, -/+ keys
   uint16_t widgetText = Color::rgb(236, 240, 245);
-  uint16_t focus = Color::rgb(56, 128, 255); // focused button fill
-  uint16_t focusText = Color::White;
+  uint16_t focus = Color::rgb(100, 162, 255); // focused button fill
+  uint16_t focusText = Color::rgb(8, 12, 20);
 
-  uint16_t switchOn = Color::rgb(56, 128, 255); // switch track when on
-  uint16_t switchKnob = Color::White;
+  uint16_t switchOn = Color::rgb(100, 162, 255); // switch track when on
+  uint16_t switchKnob = Color::rgb(8, 12, 20);
 
   uint16_t success = Color::rgb(52, 199, 89);
   uint16_t warning = Color::rgb(255, 159, 10);
@@ -88,14 +91,20 @@ struct Theme
     t.background = Color::rgb(236, 239, 244);
     t.surface = Color::White;
     t.border = Color::rgb(214, 218, 225);
+    t.track = Color::rgb(136, 144, 158);
     t.text = Color::rgb(20, 22, 26);
-    t.mutedText = Color::rgb(108, 115, 128);
-    t.accent = t.highlight = t.focus = t.popupProgress = t.switchOn = Color::rgb(0, 106, 255);
+    t.mutedText = Color::rgb(92, 99, 112);
+    t.accent = t.highlight = t.focus = t.popupProgress = t.switchOn = Color::rgb(0, 92, 226);
+    t.onAccent = t.highlightText = t.focusText = Color::White;
     t.topBar = Color::rgb(250, 250, 252);
     t.topBarText = t.popupTitle = t.widgetText = Color::rgb(20, 22, 26);
     t.popupBackground = Color::White;
-    t.widget = Color::rgb(228, 232, 238);
+    t.widget = Color::rgb(220, 225, 233);
     t.popupText = Color::rgb(60, 66, 78);
+    t.switchKnob = Color::White;
+    t.success = Color::rgb(24, 130, 60);
+    t.warning = Color::rgb(176, 106, 8);
+    t.danger = Color::rgb(200, 40, 40);
     return t;
   }
 
@@ -106,10 +115,10 @@ struct Theme
     Theme t;
     const uint16_t navy = Color::rgb(41, 57, 99);    // COL_DARK_BLUE
     const uint16_t sky = Color::rgb(90, 222, 255);   // COL_LIGHT_BLUE
-    const uint16_t lime = Color::rgb(173, 255, 66);  // COL_LIGHT_GREEN
     t.background = Color::rgb(232, 238, 246);
     t.surface = t.popupBackground = Color::White;
     t.border = Color::rgb(140, 158, 186);
+    t.track = Color::rgb(118, 134, 164);
     t.text = t.popupTitle = t.widgetText = navy;
     t.mutedText = t.popupText = Color::rgb(88, 102, 126);
     t.accent = t.popupProgress = navy;
@@ -118,8 +127,9 @@ struct Theme
     t.highlightText = t.focusText = navy;
     t.topBar = navy;
     t.topBarText = Color::White;
-    t.switchOn = lime;
-    t.switchKnob = navy;
+    // The device's pastel green is too faint on white for a switch; this one reads.
+    t.switchOn = Color::rgb(34, 150, 74);
+    t.switchKnob = Color::White;
     t.success = Color::rgb(22, 130, 70);
     t.warning = Color::rgb(176, 106, 8);
     t.danger = Color::rgb(186, 32, 40);
@@ -135,14 +145,17 @@ struct Theme
     t.background = Color::Black;
     t.surface = t.popupBackground = Color::rgb(22, 25, 32);
     t.border = Color::rgb(56, 61, 74);
+    t.track = Color::rgb(100, 108, 126);
     t.text = t.popupTitle = t.widgetText = Color::White;
-    t.mutedText = Color::rgb(148, 156, 172);
+    t.mutedText = Color::rgb(156, 164, 180);
     t.popupText = Color::rgb(200, 206, 216);
     t.accent = t.highlight = t.focus = t.popupProgress = Color::rgb(88, 158, 240);
+    t.onAccent = t.highlightText = t.focusText = Color::rgb(8, 12, 20);
     t.widget = Color::rgb(56, 88, 152);
     t.topBar = Color::rgb(22, 25, 32);
     t.topBarText = Color::White;
     t.switchOn = Color::rgb(58, 198, 118);
+    t.switchKnob = Color::rgb(8, 12, 20);
     t.success = Color::rgb(58, 198, 118);
     t.warning = Color::rgb(240, 176, 48);
     t.danger = Color::rgb(232, 78, 78);
@@ -160,6 +173,7 @@ struct Theme
     t.background = t.surface = t.popupBackground = t.topBar = Color::Black;
     t.border = t.text = t.popupTitle = t.popupText = t.topBarText = t.widgetText = Color::White;
     t.mutedText = Color::rgb(200, 200, 200);
+    t.track = Color::rgb(120, 120, 120);
     t.accent = t.highlight = t.focus = t.popupProgress = t.switchOn = yellow;
     t.onAccent = t.highlightText = t.focusText = t.switchKnob = Color::Black;
     t.widget = Color::rgb(40, 40, 40);
@@ -173,7 +187,7 @@ struct Theme
   {
     Theme t;
     t.background = t.surface = t.topBar = t.popupBackground = t.widget = Color::Black;
-    t.border = t.text = t.mutedText = t.accent = t.highlight = t.focus = t.switchOn = Color::White;
+    t.border = t.track = t.text = t.mutedText = t.accent = t.highlight = t.focus = t.switchOn = Color::White;
     t.topBarText = t.popupText = t.popupTitle = t.popupProgress = t.widgetText = Color::White;
     t.onAccent = t.highlightText = t.focusText = t.switchKnob = Color::Black;
     t.success = t.warning = t.danger = Color::White;

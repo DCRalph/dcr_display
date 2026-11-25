@@ -185,7 +185,8 @@ A theme is a value: copy a preset and change fields. Besides colours it sets:
 - `depth`: px raised controls (buttons, keys, cards, popups, -/+ keys) sit above a
   shadow of their own fill at `shadowPercent` brightness. 0 is flat; ignored on 1-bit.
 - `fillTopBar`: fill the top bar with `topBar` on any panel size.
-- `switchOn` / `switchKnob`: switch colours.
+- `switchOn` / `switchKnob`: switch colours; `track` is the off switch, slider
+  and range track, kept at 3:1 or more on `surface`.
 - Defaults for how menus and editors render, below.
 
 ### Menus and editors
@@ -204,7 +205,11 @@ Inline, which suit 64 px panels. An Expand select whose options will not fit
 side by side edits inline instead. Every editor takes the encoder, buttons and
 touch: navigation steps the value (Up moves up a sheet's list), select or back
 finishes, and a tap on the editor's keys, segments or options acts on them while
-a tap anywhere else finishes editing.
+a tap anywhere else finishes editing. A sheet also closes when its handle is
+dragged down or the sheet is swiped down.
+
+Popups and sheets dim what is behind them on colour panels whose driver
+implements `dimRect` (TFT_eSPI and ILI9341 with a frame buffer).
 
 - Text roles: `Small`, `Body`, `Title`, `XLarge`. Drivers choose the face per
   role: `setRoleFont` on ILI9341 and on TFT_eSPI with `LOAD_GFXFF`,

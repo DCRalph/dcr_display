@@ -1,6 +1,6 @@
 {
   "name": "dcr_display",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Screens, menus, popups and widgets for ESP32 on any panel (mono OLED to large colour TFT) with any input (encoder, buttons, joystick, touch).",
   "keywords": [
     "display",

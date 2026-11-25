@@ -28,9 +28,10 @@ Popup::Box Popup::box() const
   const DisplayProfile &p = Display::active().profile();
   Box b;
   b.x = p.popupMarginX;
-  b.y = p.popupMarginY;
+  // Colour panels keep the top bar clear; 64 px panels need the height.
+  b.y = Display::active().theme().oneBit ? p.popupMarginY : max<int32_t>(p.popupMarginY, p.topBarHeight + 4);
   b.w = max<int32_t>(1, Display::active().width() - 2 * p.popupMarginX);
-  b.h = max<int32_t>(1, Display::active().height() - 2 * p.popupMarginY);
+  b.h = max<int32_t>(1, Display::active().height() - b.y - p.popupMarginY);
   b.textX = b.x + p.popupPadding;
   b.textY = b.y + p.popupPadding;
   b.textW = max<int32_t>(1, b.w - 2 * p.popupPadding);
@@ -53,6 +54,8 @@ void Popup::drawFrame(const Box &b)
   Display &d = Display::active();
   const Theme &t = d.theme();
   const int16_t r = d.profile().popupRadius;
+  // Whatever is behind recedes, so the popup reads as on top.
+  d.dimRect(0, 0, d.width(), d.height());
   // A solid drop shadow on colour panels: the theme's depth, or a dark band when flat.
   if (!t.oneBit)
   {

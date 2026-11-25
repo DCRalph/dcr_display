@@ -29,6 +29,7 @@ public:
   uint16_t width() const override;
   uint16_t height() const override;
   bool buffered() const override { return canvas != nullptr; }
+  bool dimRect(int32_t x, int32_t y, int32_t w, int32_t h) override;
   void push() override;
   uint8_t lastPushPercent() const override { return pushedPercent; }
   /** Buffered only; call before begin(). On by default: only changed regions are sent. */
