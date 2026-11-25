@@ -55,13 +55,13 @@ public:
   /** Direct access for app drawing. Taking one forgets the applied font, so the next role is reapplied. */
   Adafruit_ILI9341 &tft()
   {
-    currentFont = nullptr;
+    appliedFont = nullptr;
     return panel;
   }
   /** Where drawing lands: the canvas when buffered, else the panel. */
   Adafruit_GFX &gfx()
   {
-    currentFont = nullptr;
+    appliedFont = nullptr;
     return target();
   }
   void resync() override { diff.invalidate(); }
@@ -87,7 +87,8 @@ private:
     int8_t ascent, descent;
   };
   RoleFont roleFonts[static_cast<uint8_t>(TextRole::RoleCount)];
-  const RoleFont *currentFont = nullptr;
+  const RoleFont *currentFont = nullptr; // role in use (metrics); nullptr after setTextScale
+  const RoleFont *appliedFont = nullptr; // role last installed in GFX, to skip redundant switches
 };
 
 #endif

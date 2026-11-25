@@ -86,17 +86,11 @@ void TFTDisplayDriver::drawPixel(int32_t x, int32_t y, uint16_t color)
   target().drawPixel(x, y, color);
 }
 
-bool TFTDisplayDriver::fullViewport()
-{
-  return frame.getViewportX() == 0 && frame.getViewportY() == 0 && frame.getViewportWidth() == w &&
-         frame.getViewportHeight() == h;
-}
-
 // Sprite fills go straight into the frame in 32-bit words; TFT_eSprite stores pixels
-// byte-swapped. With an app-set viewport, TFT_eSPI's own fill keeps its clipping.
+// byte-swapped. Once app code holds the sprite, TFT_eSPI's own fill keeps any viewport.
 void TFTDisplayDriver::fillRect(int32_t x, int32_t y, int32_t rw, int32_t rh, uint16_t color)
 {
-  if (!spriteReady || !fullViewport())
+  if (!spriteReady || !rawFills)
   {
     target().fillRect(x, y, rw, rh, color);
     return;
@@ -110,10 +104,7 @@ void TFTDisplayDriver::fillRect(int32_t x, int32_t y, int32_t rw, int32_t rh, ui
 // panel's unrotated TFT_WIDTH x TFT_HEIGHT and so misses part of a rotated sprite.
 void TFTDisplayDriver::fillScreen(uint16_t color)
 {
-  if (spriteReady && !fullViewport())
-    frame.fillSprite(color); // fills the viewport, as TFT_eSPI does
-  else
-    fillRect(0, 0, w, h, color);
+  fillRect(0, 0, w, h, color);
 }
 
 void TFTDisplayDriver::drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t color)
@@ -134,7 +125,7 @@ void TFTDisplayDriver::drawRoundRect(int32_t x, int32_t y, int32_t rw, int32_t r
 void TFTDisplayDriver::fillRoundRect(int32_t x, int32_t y, int32_t rw, int32_t rh, int32_t r, uint16_t color)
 {
   // The base version is TFT_eSPI's algorithm built on fillRect, so it gets the fast fill.
-  if (spriteReady && fullViewport())
+  if (spriteReady && rawFills)
     DisplayDriver::fillRoundRect(x, y, rw, rh, r, color);
   else
     target().fillRoundRect(x, y, rw, rh, r, color);
@@ -164,7 +155,7 @@ void TFTDisplayDriver::setRoleFont(TextRole role, const GFXfont *font, uint8_t s
     }
   }
   roleFonts[i] = f;
-  currentFont = nullptr; // the role may be the one applied: reapply on next use
+  appliedFont = nullptr; // the role may be the one installed: reapply on next use
 }
 #else
 void TFTDisplayDriver::setRoleScale(TextRole role, uint8_t scale)
@@ -172,18 +163,18 @@ void TFTDisplayDriver::setRoleScale(TextRole role, uint8_t scale)
   const uint8_t i = static_cast<uint8_t>(role);
   if (i < sizeof(roleFonts) / sizeof(roleFonts[0]))
     roleFonts[i] = RoleFont{nullptr, static_cast<uint8_t>(scale ? scale : 1), 0, 0};
-  currentFont = nullptr;
+  appliedFont = nullptr;
 }
 #endif
 
 void TFTDisplayDriver::setFont(TextRole role)
 {
   const uint8_t i = static_cast<uint8_t>(role);
-  const RoleFont *next = &roleFonts[i < sizeof(roleFonts) / sizeof(roleFonts[0]) ? i : 1];
+  currentFont = &roleFonts[i < sizeof(roleFonts) / sizeof(roleFonts[0]) ? i : 1];
   // setFreeFont rescans every glyph; menus ask for the same role row after row.
-  if (next == currentFont)
+  if (currentFont == appliedFont)
     return;
-  currentFont = next;
+  appliedFont = currentFont;
   TFT_eSPI &c = target();
 #ifdef LOAD_GFXFF
   if (currentFont->font)
@@ -200,7 +191,7 @@ void TFTDisplayDriver::setFont(TextRole role)
 
 void TFTDisplayDriver::setTextScale(uint8_t size)
 {
-  currentFont = nullptr;
+  currentFont = appliedFont = nullptr;
   TFT_eSPI &c = target();
 #ifdef LOAD_GFXFF
   c.setFreeFont(nullptr);

@@ -165,23 +165,24 @@ void DisplayDriver::drawSmoothArc(int32_t x, int32_t y, int32_t r, int32_t ir, i
   startAngle = ((startAngle % 360) + 360) % 360;
   endAngle = ((endAngle % 360) + 360) % 360;
   const bool full = startAngle == endAngle;
-  const int32_t r2 = r * r, ir2 = ir * ir;
+  const int64_t r2 = static_cast<int64_t>(r) * r, ir2 = static_cast<int64_t>(ir) * ir;
 
   for (int32_t dy = -r; dy <= r; dy++)
   {
     // Float estimates, corrected with exact integer tests: outer is the widest dx with
     // dx^2 <= r^2 - dy^2, inner the narrowest with dx^2 >= ir^2 - dy^2.
-    const int32_t outerSq = r2 - dy * dy;
-    int32_t outer = static_cast<int32_t>(sqrtf(static_cast<float>(outerSq)));
+    const int64_t dy2 = static_cast<int64_t>(dy) * dy;
+    const int64_t outerSq = r2 - dy2;
+    int64_t outer = static_cast<int64_t>(sqrtf(static_cast<float>(outerSq)));
     while (outer > 0 && outer * outer > outerSq)
       outer--;
     while ((outer + 1) * (outer + 1) <= outerSq)
       outer++;
-    const int32_t innerSq = ir2 - dy * dy;
-    int32_t inner = -1;
+    const int64_t innerSq = ir2 - dy2;
+    int64_t inner = -1;
     if (innerSq > 0)
     {
-      inner = static_cast<int32_t>(ceilf(sqrtf(static_cast<float>(innerSq))));
+      inner = static_cast<int64_t>(ceilf(sqrtf(static_cast<float>(innerSq))));
       while (inner > 0 && (inner - 1) * (inner - 1) >= innerSq)
         inner--;
       while (inner * inner < innerSq)
@@ -191,16 +192,16 @@ void DisplayDriver::drawSmoothArc(int32_t x, int32_t y, int32_t r, int32_t ir, i
     if (full)
     {
       if (inner < 0)
-        fillRect(x - outer, y + dy, 2 * outer + 1, 1, fgColor);
+        fillRect(x - static_cast<int32_t>(outer), y + dy, static_cast<int32_t>(2 * outer + 1), 1, fgColor);
       else if (inner <= outer)
       {
-        fillRect(x - outer, y + dy, outer - inner + 1, 1, fgColor);
-        fillRect(x + inner, y + dy, outer - inner + 1, 1, fgColor);
+        fillRect(x - static_cast<int32_t>(outer), y + dy, static_cast<int32_t>(outer - inner + 1), 1, fgColor);
+        fillRect(x + static_cast<int32_t>(inner), y + dy, static_cast<int32_t>(outer - inner + 1), 1, fgColor);
       }
       continue;
     }
 
-    for (int32_t dx = -outer; dx <= outer; dx++)
+    for (int32_t dx = static_cast<int32_t>(-outer); dx <= outer; dx++)
     {
       if (inner >= 0 && abs(dx) < inner)
         continue;

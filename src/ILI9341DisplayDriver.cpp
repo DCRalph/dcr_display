@@ -39,7 +39,7 @@ void ILI9341DisplayDriver::setRoleFont(TextRole role, const GFXfont *font, uint8
     }
   }
   roleFonts[i] = f;
-  currentFont = nullptr;
+  appliedFont = nullptr;
 }
 
 ILI9341DisplayDriver::~ILI9341DisplayDriver()
@@ -68,7 +68,7 @@ bool ILI9341DisplayDriver::begin()
     else
     {
       canvas->setTextWrap(false);
-      currentFont = nullptr; // fonts so far went to the panel; apply the next one to the canvas
+      appliedFont = nullptr; // fonts so far went to the panel; apply the next one to the canvas
     }
     if (canvas && partialPush && !diff.begin(canvas->width(), canvas->height()))
       debugW("No memory for change tracking; pushing whole frames");
@@ -159,10 +159,10 @@ void ILI9341DisplayDriver::fillRoundRect(int32_t x, int32_t y, int32_t w, int32_
 void ILI9341DisplayDriver::setFont(TextRole role)
 {
   const uint8_t i = static_cast<uint8_t>(role);
-  const RoleFont *next = &roleFonts[i < sizeof(roleFonts) / sizeof(roleFonts[0]) ? i : 1];
-  if (next == currentFont)
+  currentFont = &roleFonts[i < sizeof(roleFonts) / sizeof(roleFonts[0]) ? i : 1];
+  if (currentFont == appliedFont)
     return;
-  currentFont = next;
+  appliedFont = currentFont;
   target().setFont(currentFont->font);
   textScale = currentFont->font ? 1 : currentFont->scale;
   target().setTextSize(textScale);
@@ -170,7 +170,7 @@ void ILI9341DisplayDriver::setFont(TextRole role)
 
 void ILI9341DisplayDriver::setTextScale(uint8_t size)
 {
-  currentFont = nullptr;
+  currentFont = appliedFont = nullptr;
   target().setFont(nullptr);
   textScale = size ? size : 1;
   target().setTextSize(textScale);
