@@ -365,6 +365,36 @@ void MenuItemNavigate::addRoute(int8_t clicksToRun, const Screen2 *target)
           { Display::active().screens().setScreen(target); });
 }
 
+MenuItemGroup::MenuItemGroup(String title) : MenuItem(std::move(title))
+{
+  type = MenuItemType::Group;
+}
+
+// The menu sets rowBox to the title's own band, below any gap before it.
+void MenuItemGroup::draw(int16_t x, int16_t y, bool)
+{
+  Display &d = Display::active();
+  const Theme &t = d.theme();
+  char label[48];
+  size_t n = 0;
+  for (const char *c = getName().c_str(); *c && n < sizeof(label) - 1; c++)
+    label[n++] = static_cast<char>(toupper(static_cast<unsigned char>(*c)));
+  label[n] = 0;
+
+  d.setTextRole(t.oneBit ? TextRole::Small : TextRole::Body);
+  d.setTextColor(t.oneBit ? t.text : t.mutedText);
+  d.setTextDatum(Datum::BottomLeft);
+  const int16_t pad = t.oneBit ? 2 : 6;
+  const int16_t bottom = y + rowBox.h - (t.oneBit ? 1 : 3);
+  d.drawString(label, x + pad, bottom);
+  if (t.oneBit)
+  {
+    const int16_t lineX = x + pad + d.textWidth(label) + 3;
+    const int16_t lineY = y + rowBox.h / 2;
+    d.drawLine(lineX, lineY, x + rowBox.w - 1, lineY, t.text);
+  }
+}
+
 MenuItemBack::MenuItemBack() : MenuItem("Back")
 {
   type = MenuItemType::Back;
@@ -849,20 +879,35 @@ int16_t Menu::growPx() const
 {
   if (!growItem || growVisibleSlot < 0)
     return 0;
-  return static_cast<int16_t>(lroundf(growItem->editExtraHeight(rowHeight()) * grow.value()));
+  return static_cast<int16_t>(lroundf(growItem->editExtraHeight(laidOutRowH) * grow.value()));
+}
+
+int16_t Menu::baseHeight(int slot) const
+{
+  if (slot < 0 || slot >= static_cast<int>(visibleScratch.size()))
+    return 0;
+  if (items[visibleScratch[slot]]->isTitle())
+    return titleH + (slot > 0 ? titleGap : 0);
+  return static_cast<int16_t>(laidOutRowH);
+}
+
+int32_t Menu::baseTop(int slot) const
+{
+  int32_t top = 0;
+  for (int i = 0; i < slot; i++)
+    top += baseHeight(i);
+  return top;
 }
 
 int32_t Menu::slotTop(int slot) const
 {
-  const int rowH = rowHeight();
   const int g = growSlot();
-  return static_cast<int32_t>(slot) * rowH + (g >= 0 && slot > g ? growPx() : 0);
+  return baseTop(slot) + (g >= 0 && slot > g ? growPx() : 0);
 }
 
 int16_t Menu::slotHeight(int slot) const
 {
-  const int16_t rowH = static_cast<int16_t>(rowHeight());
-  return slot == growSlot() ? rowH + growPx() : rowH;
+  return baseHeight(slot) + (slot == growSlot() ? growPx() : 0);
 }
 
 void Menu::setActive(uint16_t index)
@@ -876,7 +921,7 @@ void Menu::nextItem()
 {
   for (size_t i = active + 1; i < items.size(); i++)
   {
-    if (!items[i]->isHidden())
+    if (selectable(i))
     {
       active = static_cast<uint16_t>(i);
       return;
@@ -888,7 +933,7 @@ void Menu::prevItem()
 {
   for (int i = static_cast<int>(active) - 1; i >= 0; i--)
   {
-    if (!items[i]->isHidden())
+    if (selectable(static_cast<size_t>(i)))
     {
       active = static_cast<uint16_t>(i);
       return;
@@ -909,7 +954,7 @@ void Menu::ensureActiveVisible()
     active = 0;
     return;
   }
-  if (!items[active]->isHidden())
+  if (selectable(active))
     return;
   const uint16_t before = active;
   nextItem();
@@ -947,8 +992,20 @@ const std::vector<uint16_t> &Menu::visibleItems()
 {
   visibleScratch.clear(); // keeps its capacity: no allocation after the first frame
   for (size_t i = 0; i < items.size(); i++)
-    if (!items[i]->isHidden())
-      visibleScratch.push_back(static_cast<uint16_t>(i));
+  {
+    if (items[i]->isHidden())
+      continue;
+    if (items[i]->isTitle())
+    {
+      // Only titles with a visible row before the next title.
+      size_t next = i + 1;
+      while (next < items.size() && items[next]->isHidden())
+        next++;
+      if (next == items.size() || items[next]->isTitle())
+        continue;
+    }
+    visibleScratch.push_back(static_cast<uint16_t>(i));
+  }
   return visibleScratch;
 }
 
@@ -1005,7 +1062,7 @@ void Menu::handle(const InputEvent &e)
     // A long press is the touch version of a long click: run the -1 action.
     const int slot = slotAt(e.y);
     const std::vector<uint16_t> &visible = visibleItems();
-    if (!editing && slot >= 0 && slot < static_cast<int>(visible.size()))
+    if (!editing && slot >= 0 && slot < static_cast<int>(visible.size()) && !items[visible[slot]]->isTitle())
     {
       active = visible[slot];
       items[active]->run(-1, -1);
@@ -1054,48 +1111,25 @@ void Menu::tap(int16_t x, int16_t y)
   // Hit-test against the list as drawn, mid-scroll included.
   const int slot = slotAt(y);
   const std::vector<uint16_t> &visible = visibleItems();
-  if (slot < 0 || slot >= static_cast<int>(visible.size()))
+  if (slot < 0 || slot >= static_cast<int>(visible.size()) || items[visible[slot]]->isTitle())
     return;
   active = visible[slot];
   items[active]->run(1, 1);
 }
 
-void Menu::layoutPage(const std::vector<uint16_t> &visible, uint8_t rows)
-{
-  size_t activeSlot = 0;
-  for (size_t i = 0; i < visible.size(); i++)
-    if (visible[i] == active)
-      activeSlot = i;
-
-  // Keep one row of lookahead so the next item is always in view.
-  const size_t margin = rows >= 3 ? 1 : 0;
-  if (activeSlot < topVisible + margin)
-    topVisible = static_cast<uint16_t>(activeSlot > margin ? activeSlot - margin : 0);
-  else if (activeSlot + margin >= topVisible + rows)
-    topVisible = static_cast<uint16_t>(activeSlot + margin + 1 - rows);
-
-  const size_t maxTop = visible.size() > rows ? visible.size() - rows : 0;
-  if (topVisible > maxTop)
-    topVisible = static_cast<uint16_t>(maxTop);
-}
-
 int Menu::slotAt(int16_t y) const
 {
   const Frame f = frame();
-  const int rowH = rowHeight();
-  if (y < f.top || rowH <= 0 || y >= f.top + min<int32_t>(f.viewH, getItemsPerPage() * rowH))
+  if (y < f.top || y >= f.top + drawnWindowH)
     return -1;
-  int32_t c = y - f.top + drawnScroll;
-  const int g = growSlot();
-  if (g >= 0)
+  const int32_t c = y - f.top + drawnScroll;
+  for (int slot = 0; slot < static_cast<int>(visibleScratch.size()); slot++)
   {
-    const int32_t gTop = slotTop(g);
-    if (c >= gTop + slotHeight(g))
-      c -= growPx();
-    else if (c >= gTop)
-      return g;
+    const int32_t top = slotTop(slot);
+    if (c >= top && c < top + slotHeight(slot))
+      return slot;
   }
-  return static_cast<int>(c / rowH);
+  return -1;
 }
 
 void Menu::draw()
@@ -1110,19 +1144,25 @@ void Menu::draw()
   const std::vector<uint16_t> &visible = visibleItems();
   if (visible.empty())
     return;
-  size_t activeSlot = 0;
-  for (size_t i = 0; i < visible.size(); i++)
+  const int count = static_cast<int>(visible.size());
+  int activeSlot = 0;
+  for (int i = 0; i < count; i++)
     if (visible[i] == active)
       activeSlot = i;
 
   Display &d = Display::active();
   const Theme &t = d.theme();
   const uint8_t rows = getItemsPerPage();
-  layoutPage(visible, rows);
-
   const MenuStyle::DrawStyle style = MenuStyle::drawStyle(menuSize);
   const int rowH = rowHeight();
   const Frame f = frame();
+  const bool relayout = laidOutRowH != rowH;
+  laidOutRowH = rowH;
+  d.setTextRole(t.oneBit ? TextRole::Small : TextRole::Body);
+  titleH = static_cast<int16_t>(d.fontHeight() + (t.oneBit ? 2 : 6));
+  titleGap = t.oneBit ? 0 : 8;
+  // Colour cards break at each title; a mono list stays one block with titles on rules.
+  const bool splitCards = f.grouped && !t.oneBit;
 
   // The row being edited grows in, and shrinks back after.
   MenuItem *current = items[active];
@@ -1138,34 +1178,45 @@ void Menu::draw()
   if (growItem && !editorGrows && grow.value() <= 0.001f)
     growItem = nullptr;
   growVisibleSlot = -1;
-  for (size_t i = 0; growItem && i < visible.size(); i++)
+  for (int i = 0; growItem && i < count; i++)
     if (items[visible[i]] == growItem)
-      growVisibleSlot = static_cast<int>(i);
+      growVisibleSlot = i;
 
-  // Scroll by rows, then far enough that a growing row is wholly in view.
   const int32_t fullExtra = growItem && grow.target() > 0 ? growItem->editExtraHeight(rowH) : 0;
-  const int32_t contentH = static_cast<int32_t>(visible.size()) * rowH + fullExtra;
+  const int32_t baseListH = baseTop(count);
+  const int32_t contentH = baseListH + fullExtra;
   // The window holds whole rows; an editor growing in may also take the spare px below them.
-  const int32_t pageH = fullExtra > 0 ? f.viewH : min<int32_t>(f.viewH, static_cast<int32_t>(rows) * rowH);
-  int32_t scrollTarget = static_cast<int32_t>(topVisible) * rowH;
+  const int32_t restPageH = min<int32_t>(f.viewH, static_cast<int32_t>(rows) * rowH);
+  const int32_t pageH = fullExtra > 0 ? f.viewH : restPageH;
+
+  // Scroll as little as keeps the active row, a slot either side and its group's title in view.
+  int first = rows >= 3 ? max(0, activeSlot - 1) : activeSlot;
+  const int last = rows >= 3 ? min(count - 1, activeSlot + 1) : activeSlot;
+  if (activeSlot > 0 && items[visible[activeSlot - 1]]->isTitle())
+    first = min(first, activeSlot - 1);
+  const int32_t wantBottom = baseTop(last) + baseHeight(last);
+  if (wantBottom - restScroll > restPageH)
+    restScroll = wantBottom - restPageH;
+  restScroll = constrain(min(restScroll, baseTop(first)), 0, max<int32_t>(0, baseListH - restPageH));
+  int32_t scrollTarget = restScroll;
   if (fullExtra > 0)
   {
-    const int32_t activeTop = static_cast<int32_t>(activeSlot) * rowH;
+    // Then far enough that the growing row is wholly in view.
+    const int32_t activeTop = baseTop(activeSlot);
     const int32_t activeBottom = activeTop + rowH + fullExtra;
     if (activeBottom - scrollTarget > pageH)
       scrollTarget = activeBottom - pageH;
     if (activeTop < scrollTarget)
       scrollTarget = activeTop;
+    scrollTarget = constrain(scrollTarget, 0, max<int32_t>(0, contentH - pageH));
   }
-  scrollTarget = constrain(scrollTarget, 0, max<int32_t>(0, contentH - pageH));
 
-  const float highlightTarget = static_cast<float>(slotTop(static_cast<int>(activeSlot)));
-  if (laidOutRowH != rowH)
+  const float highlightTarget = static_cast<float>(slotTop(activeSlot));
+  if (relayout)
   {
     // First draw, or rows changed size: place everything without animating.
     scrollY.snap(scrollTarget);
     highlightY.snap(highlightTarget);
-    laidOutRowH = rowH;
   }
   if (scrollY.target() != scrollTarget)
     scrollY.start(scrollTarget, 160);
@@ -1175,78 +1226,111 @@ void Menu::draw()
   const int32_t scroll = drawnScroll;
 
   const int growAt = growSlot();
-  const int16_t extra = growPx();
-  const int32_t listH = static_cast<int32_t>(visible.size()) * rowH + extra;
+  const int32_t listH = baseListH + growPx();
   const int16_t barRight = contentH > pageH ? 5 : 0;
   const int16_t radius = t.oneBit ? style.radius : style.radius + 4;
-
-  // The window stays put; the list scrolls inside it, clipped to its edges.
   const int16_t windowH = static_cast<int16_t>(min<int32_t>(listH, pageH));
+  const int16_t windowBottom = f.top + windowH;
+  drawnWindowH = windowH;
+
+  const int16_t rowX = f.grouped ? f.x : 0;
+  const int16_t rowW = f.grouped ? f.w - (barRight ? 2 : 0) : static_cast<int16_t>(d.width()) - barRight;
+  const int16_t hlY = static_cast<int16_t>(f.top + highlightY.value() - scroll);
   const auto shown = [&](int slot)
   {
     const int32_t top = slotTop(slot);
     return top + slotHeight(slot) > scroll && top < scroll + windowH;
   };
-
-  int16_t rowX = 0, rowW = static_cast<int16_t>(d.width()) - barRight;
-  if (f.grouped)
+  const auto drawSlot = [&](int slot, int16_t y)
   {
-    rowX = f.x;
-    rowW = f.w - (barRight ? 2 : 0);
-    if (t.oneBit)
-      d.drawRoundRect(rowX, f.top, rowW, windowH, 3, t.text);
-    else
-    {
-      // The outline keeps the card's edge on panels that wash out light fills.
-      Draw::raised(rowX, f.top, rowW, windowH, MenuStyle::kGroupRadius, t.surface);
-      d.drawRoundRect(rowX, f.top, rowW, windowH, MenuStyle::kGroupRadius, t.border);
-    }
-    d.setClip(rowX, f.top + 1, rowW, windowH - 2);
-  }
-  else
-    d.setClip(0, f.top, d.width(), windowH);
-
-  // Highlight, or the editing tint, at the active row.
-  const int16_t hlY = static_cast<int16_t>(f.top + highlightY.value() - scroll);
-  const int16_t hlH = slotHeight(static_cast<int>(activeSlot));
-  const int16_t inset = f.grouped ? 3 : (t.oneBit ? 0 : 4);
-  const int16_t hlX = rowX + inset;
-  const int16_t hlW = rowW - 2 * inset;
-  if (current->isEditing())
-  {
-    if (!t.oneBit)
-      d.fillRoundRect(hlX, hlY + (f.grouped ? 2 : 0), hlW, hlH - (f.grouped ? 4 : 0), f.grouped ? 7 : radius,
-                      Color::blend(t.surface, t.highlight, 60));
-    if (!f.grouped || t.oneBit)
-      d.drawRoundRect(hlX, hlY, hlW, hlH, radius, t.accent);
-  }
-  else if (f.grouped && !t.oneBit)
-    d.fillRoundRect(hlX, hlY + 2, hlW, rowH - 4, 7, resolve(current->bgColor, t.highlight));
-  else
-    d.fillRoundRect(hlX, hlY, hlW, rowH, radius, resolve(current->bgColor, t.highlight));
-
-  for (int slot = 0; slot < static_cast<int>(visible.size()); slot++)
-  {
-    if (!shown(slot))
-      continue;
-    const int32_t top = slotTop(slot);
-    const int16_t h = slotHeight(slot);
-    const int16_t y = static_cast<int16_t>(f.top + top - scroll);
     MenuItem *item = items[visible[slot]];
-
-    // Hairlines between grouped rows, clear of the highlight and the card's round corners.
-    const bool inCorner = y < f.top + MenuStyle::kGroupRadius || y > f.top + windowH - MenuStyle::kGroupRadius;
-    if (f.grouped && slot > 0 && !t.oneBit && !inCorner && slot != static_cast<int>(activeSlot) &&
-        slot - 1 != static_cast<int>(activeSlot))
-      d.drawLine(rowX + 12, y, rowX + rowW - 1, y, t.border);
-
-    item->rowBox = Rect{rowX, y, rowW, h};
+    const int16_t gap = item->isTitle() && slot > 0 ? titleGap : 0;
+    item->rowBox = Rect{rowX, static_cast<int16_t>(y + gap), rowW, static_cast<int16_t>(slotHeight(slot) - gap)};
     item->baseRowH = static_cast<int16_t>(rowH);
     item->editGrow = slot == growAt ? grow.value() : 0;
-    const bool underHighlight = abs(y - hlY) < rowH / 2;
-    item->draw(rowX, y, underHighlight);
+    item->draw(rowX, y + gap, !item->isTitle() && abs(y - hlY) < rowH / 2);
+  };
+
+  // A run of rows on one card (the whole list unless cards split): the card is the
+  // run's box held inside the window, so a card scrolling out squashes to the edge.
+  const auto drawRun = [&](int firstSlot, int lastSlot)
+  {
+    const int32_t top = f.top + slotTop(firstSlot) - scroll;
+    const int32_t bottom = f.top + slotTop(lastSlot) + slotHeight(lastSlot) - scroll;
+    const int16_t y0 = static_cast<int16_t>(max<int32_t>(top, f.top));
+    const int16_t y1 = static_cast<int16_t>(min<int32_t>(bottom, windowBottom));
+    if (y1 - y0 < 2)
+      return;
+    const int16_t cardR = min<int16_t>(MenuStyle::kGroupRadius, (y1 - y0) / 2);
+    if (f.grouped && t.oneBit)
+      d.drawRoundRect(rowX, y0, rowW, y1 - y0, 3, t.text);
+    else if (f.grouped)
+    {
+      // The outline keeps the card's edge on panels that wash out light fills.
+      Draw::raised(rowX, y0, rowW, y1 - y0, cardR, t.surface);
+      d.drawRoundRect(rowX, y0, rowW, y1 - y0, cardR, t.border);
+    }
+    if (f.grouped)
+      d.setClip(rowX, y0 + 1, rowW, y1 - y0 - 2);
+    else
+      d.setClip(0, y0, d.width(), y1 - y0);
+
+    // Highlight, or the editing tint, at the active row.
+    if (activeSlot >= firstSlot && activeSlot <= lastSlot)
+    {
+      const int16_t hlH = slotHeight(activeSlot);
+      const int16_t inset = f.grouped ? 3 : (t.oneBit ? 0 : 4);
+      const int16_t hlX = rowX + inset;
+      const int16_t hlW = rowW - 2 * inset;
+      if (current->isEditing())
+      {
+        if (!t.oneBit)
+          d.fillRoundRect(hlX, hlY + (f.grouped ? 2 : 0), hlW, hlH - (f.grouped ? 4 : 0), f.grouped ? 7 : radius,
+                          Color::blend(t.surface, t.highlight, 60));
+        if (!f.grouped || t.oneBit)
+          d.drawRoundRect(hlX, hlY, hlW, hlH, radius, t.accent);
+      }
+      else if (f.grouped && !t.oneBit)
+        d.fillRoundRect(hlX, hlY + 2, hlW, rowH - 4, 7, resolve(current->bgColor, t.highlight));
+      else
+        d.fillRoundRect(hlX, hlY, hlW, rowH, radius, resolve(current->bgColor, t.highlight));
+    }
+
+    for (int slot = firstSlot; slot <= lastSlot; slot++)
+    {
+      if (!shown(slot))
+        continue;
+      const int16_t y = static_cast<int16_t>(f.top + slotTop(slot) - scroll);
+      // Hairlines between rows, clear of titles, the highlight and the card's round corners.
+      const bool inCorner = y < y0 + MenuStyle::kGroupRadius || y > y1 - MenuStyle::kGroupRadius;
+      if (f.grouped && !t.oneBit && slot > firstSlot && !inCorner && slot != activeSlot && slot - 1 != activeSlot &&
+          !items[visible[slot]]->isTitle() && !items[visible[slot - 1]]->isTitle())
+        d.drawLine(rowX + 12, y, rowX + rowW - 1, y, t.border);
+      drawSlot(slot, y);
+    }
+    d.clearClip();
+  };
+
+  for (int slot = 0; slot < count;)
+  {
+    if (splitCards && items[visible[slot]]->isTitle())
+    {
+      // Titles sit on the background between cards.
+      if (shown(slot))
+      {
+        d.setClip(0, f.top, d.width(), windowH);
+        drawSlot(slot, static_cast<int16_t>(f.top + slotTop(slot) - scroll));
+        d.clearClip();
+      }
+      slot++;
+      continue;
+    }
+    int end = slot;
+    while (end + 1 < count && !(splitCards && items[visible[end + 1]]->isTitle()))
+      end++;
+    drawRun(slot, end);
+    slot = end + 1;
   }
-  d.clearClip();
 
   if (barRight)
   {

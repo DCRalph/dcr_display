@@ -157,6 +157,8 @@ namespace
   MenuItemAction colourItem("Coloured", 1, []()
                             { gLast = "coloured"; });
   MenuItemSubmenu submenuItem("Submenu", &itemsSubmenu);
+  // The last group holds only the hideable row, so its title hides with it.
+  MenuItemGroup valuesGroup("Values"), choicesGroup("Choices"), actionsGroup("Actions"), hideableGroup("Hides with it");
   MenuItemBack subBack;
   MenuItemToggle subToggle("Sub toggle", &gSubToggle);
   MenuItemNumber<int> subInt("Sub int", &gSubInt, 0, 9);
@@ -194,9 +196,9 @@ namespace
                            const MenuLook looks[] = {MenuLook::Theme, MenuLook::Flat, MenuLook::Grouped};
                            itemsMenu.setLook(looks[lookItem.getCurrentIndex()]); });
     for (MenuItem *item : std::initializer_list<MenuItem *>{
-             &itemsBack, &lastItem, &toggleItem, &intItem, &floatItem, &inlineNumItem, &selectItem,
-             &sheetItem, &longSheetItem, &inlineSelItem, &lookItem, &byteItem, &uptimeItem, &clicksItem, &hideItem, &hiddenItem,
-             &colourItem, &submenuItem})
+             &itemsBack, &lastItem, &valuesGroup, &toggleItem, &intItem, &floatItem, &inlineNumItem, &byteItem,
+             &uptimeItem, &choicesGroup, &selectItem, &sheetItem, &longSheetItem, &inlineSelItem, &lookItem,
+             &actionsGroup, &clicksItem, &hideItem, &colourItem, &submenuItem, &hideableGroup, &hiddenItem})
       itemsMenu.addMenuItem(item);
     itemsSubmenu.addMenuItem(&subBack);
     itemsSubmenu.addMenuItem(&subToggle);
