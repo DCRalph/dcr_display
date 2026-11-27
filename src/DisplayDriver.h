@@ -37,6 +37,9 @@ public:
    * False where the driver has no frame to darken (the overlay then draws as is).
    */
   virtual bool dimRect(int32_t x, int32_t y, int32_t w, int32_t h) { return false; }
+  /** Drops drawing outside the rect until clearClip(). A driver without clipping draws everything. */
+  virtual void setClip(int32_t x, int32_t y, int32_t w, int32_t h) {}
+  virtual void clearClip() {}
 
   virtual void drawPixel(int32_t x, int32_t y, uint16_t color) = 0;
   virtual void fillRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t color) = 0;

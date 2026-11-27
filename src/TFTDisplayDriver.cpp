@@ -90,7 +90,7 @@ void TFTDisplayDriver::drawPixel(int32_t x, int32_t y, uint16_t color)
 // byte-swapped. Once app code holds the sprite, TFT_eSPI's own fill keeps any viewport.
 void TFTDisplayDriver::fillRect(int32_t x, int32_t y, int32_t rw, int32_t rh, uint16_t color)
 {
-  if (!spriteReady || !rawFills)
+  if (!spriteReady || !rawFills || clipped)
   {
     target().fillRect(x, y, rw, rh, color);
     return;
@@ -126,6 +126,19 @@ bool TFTDisplayDriver::dimRect(int32_t x, int32_t y, int32_t rw, int32_t rh)
   return true;
 }
 
+// Screen coordinates are kept (vpDatum false); TFT_eSPI's own fills clip to the viewport.
+void TFTDisplayDriver::setClip(int32_t x, int32_t y, int32_t rw, int32_t rh)
+{
+  target().setViewport(x, y, rw, rh, false);
+  clipped = true;
+}
+
+void TFTDisplayDriver::clearClip()
+{
+  target().resetViewport();
+  clipped = false;
+}
+
 void TFTDisplayDriver::drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t color)
 {
   target().drawLine(x0, y0, x1, y1, color);
@@ -144,7 +157,7 @@ void TFTDisplayDriver::drawRoundRect(int32_t x, int32_t y, int32_t rw, int32_t r
 void TFTDisplayDriver::fillRoundRect(int32_t x, int32_t y, int32_t rw, int32_t rh, int32_t r, uint16_t color)
 {
   // The base version is TFT_eSPI's algorithm built on fillRect, so it gets the fast fill.
-  if (spriteReady && rawFills)
+  if (spriteReady && rawFills && !clipped)
     DisplayDriver::fillRoundRect(x, y, rw, rh, r, color);
   else
     target().fillRoundRect(x, y, rw, rh, r, color);

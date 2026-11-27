@@ -41,6 +41,8 @@ public:
   /** Call after clearDisplay(), sleep/wake or anything else that changes the panel outside push(). */
   void resync() override { panelInSync = false; }
 
+  void setClip(int32_t x, int32_t y, int32_t w, int32_t h) override;
+  void clearClip() override;
   void drawPixel(int32_t x, int32_t y, uint16_t color) override;
   void fillRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t color) override;
   void fillScreen(uint16_t color) override;

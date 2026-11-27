@@ -101,6 +101,18 @@ void U8g2DisplayDriver::push()
   pushedPercent = static_cast<uint8_t>(sentRows * 100 / th);
 }
 
+void U8g2DisplayDriver::setClip(int32_t x, int32_t y, int32_t w, int32_t h)
+{
+  const int32_t x1 = constrain(x + w, 0, static_cast<int32_t>(width()));
+  const int32_t y1 = constrain(y + h, 0, static_cast<int32_t>(height()));
+  u8g2.setClipWindow(constrain(x, 0, x1), constrain(y, 0, y1), x1, y1);
+}
+
+void U8g2DisplayDriver::clearClip()
+{
+  u8g2.setMaxClipWindow();
+}
+
 void U8g2DisplayDriver::drawPixel(int32_t x, int32_t y, uint16_t color)
 {
   u8g2.setDrawColor(ink(color));
