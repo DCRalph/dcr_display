@@ -114,6 +114,19 @@ fills the screen. The card (or the flat list's area) stays put and the list
 scrolls inside it, clipped to its edges through the driver's `setClip`
 (TFT_eSPI and U8g2; other drivers draw unclipped).
 
+A `MenuItemGroup` titles the rows after it, up to the next title. Titles are
+never selected: the encoder and drags skip them, and selecting a group's first
+row scrolls its title into view. On colour panels each group gets its own card
+with a muted title above it; on mono panels the title sits on a rule. A title
+whose rows are all hidden hides too.
+
+```cpp
+MenuItemGroup testGroup("Test"), hardwareGroup("Hardware");
+for (MenuItem *item : std::initializer_list<MenuItem *>{&testGroup, &uiTestItem, &touchTestItem,
+                                                        &hardwareGroup, &backlightItem})
+  menu.addMenuItem(item);
+```
+
 ## Several displays
 
 Each `Display` has its own `ScreenManager`, menu metrics and input sources.

@@ -27,7 +27,8 @@ enum class MenuItemType
   String,
   Number,
   Select,
-  Submenu
+  Submenu,
+  Group
 };
 
 enum class MenuSize
@@ -84,6 +85,8 @@ public:
   void setBgColor(uint16_t color) { bgColor = color; }           // highlight fill when active
   void setHidden(bool hidden);
   bool isHidden() const { return hidden; }
+  /** A group title: never selected, and it starts a new group of rows. */
+  virtual bool isTitle() const { return false; }
 
   void executeFunc() { executeFunc(MENU_DEFAULT_CLICKS); }
   void executeFunc(int8_t clicks);
@@ -170,6 +173,17 @@ class MenuItemBack : public MenuItem
 public:
   MenuItemBack();
   bool leadingChevron() const override { return true; }
+};
+
+// Titles the rows after it, up to the next title. Colour panels give each group its
+// own card under the title; mono panels draw the title on a rule. A title with no
+// visible rows after it is hidden.
+class MenuItemGroup : public MenuItem
+{
+public:
+  explicit MenuItemGroup(String title);
+  bool isTitle() const override { return true; }
+  void draw(int16_t x, int16_t y, bool active) override;
 };
 
 class MenuItemToggle : public MenuItem
@@ -459,8 +473,7 @@ private:
   void tap(int16_t x, int16_t y);
   void moveBy(int steps);
   void ensureActiveVisible();
-  void layoutPage(const std::vector<uint16_t> &visible, uint8_t rows);
-  int slotAt(int16_t y) const; // visible-list index under y, or -1
+  int slotAt(int16_t y) const; // visible-list index under y, or -1; titles included
   const std::vector<uint16_t> &visibleItems();
   std::vector<uint16_t> visibleScratch;
 
@@ -468,12 +481,17 @@ private:
   int rowHeight() const; // the size's line height, stretched to fill the viewport
   int growSlot() const;
   int16_t growPx() const;
+  // Slot geometry as last laid out, in px from the first slot; the base forms leave out
+  // an editor growing in.
+  int16_t baseHeight(int slot) const;
+  int32_t baseTop(int slot) const;
   int32_t slotTop(int slot) const;
   int16_t slotHeight(int slot) const;
+  bool selectable(size_t index) const { return !items[index]->isHidden() && !items[index]->isTitle(); }
 
   uint16_t active = 0;
   MenuLook menuLook = MenuLook::Theme;
-  uint16_t topVisible = 0; // index into the visible-item list
+  int32_t restScroll = 0; // list px at the top of the window, editors aside
   uint8_t manualRowsPerPage = 0;
   MenuSize menuSize;
   Menu *activeSubmenu = nullptr;
@@ -483,6 +501,8 @@ private:
   // Motion: the list scroll and the highlight, both in px from the first row.
   Tween scrollY, highlightY;
   int laidOutRowH = 0;
+  int16_t titleH = 0, titleGap = 0; // a title's height, and the space above one after the first slot
+  int16_t drawnWindowH = 0;
   int32_t drawnScroll = 0; // scroll offset of the last drawn frame; taps hit-test against it
 
   // The editor growing in or out, and its progress 0-1.
