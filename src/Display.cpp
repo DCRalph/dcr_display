@@ -123,6 +123,18 @@ bool Display::dimRect(int32_t x, int32_t y, int32_t w, int32_t h)
   return panel && !currentTheme.oneBit && panel->dimRect(x, y, w, h);
 }
 
+void Display::setClip(int32_t x, int32_t y, int32_t w, int32_t h)
+{
+  if (panel)
+    panel->setClip(x, y, w, h);
+}
+
+void Display::clearClip()
+{
+  if (panel)
+    panel->clearClip();
+}
+
 void Display::setTheme(const Theme &theme)
 {
   baseTheme = theme;

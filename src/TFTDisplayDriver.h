@@ -75,6 +75,8 @@ public:
   }
   void resync() override { diff.invalidate(); }
   bool dimRect(int32_t x, int32_t y, int32_t w, int32_t h) override;
+  void setClip(int32_t x, int32_t y, int32_t w, int32_t h) override;
+  void clearClip() override;
 
 protected:
   TFT_eSPI &target() { return spriteReady ? static_cast<TFT_eSPI &>(frame) : panel; }
@@ -110,6 +112,7 @@ protected:
   const RoleFont *currentFont = nullptr; // role in use (metrics); nullptr after setTextScale
   const RoleFont *appliedFont = nullptr; // role last installed in TFT_eSPI, to skip rescans
   bool rawFills = true;                  // fills write the frame directly (no app viewport possible)
+  bool clipped = false;                  // a viewport from setClip() is set
 };
 
 #endif

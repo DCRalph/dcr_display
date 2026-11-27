@@ -109,6 +109,11 @@ navigation changes its value instead. With a pointer source attached, rows grow
 to `minTouchRowHeight`, a tap activates a row, a drag scrolls, and rows being
 edited show `-`/`+` targets.
 
+A menu's rows stretch to share out the spare height, so a page of whole rows
+fills the screen. The card (or the flat list's area) stays put and the list
+scrolls inside it, clipped to its edges through the driver's `setClip`
+(TFT_eSPI and U8g2; other drivers draw unclipped).
+
 ## Several displays
 
 Each `Display` has its own `ScreenManager`, menu metrics and input sources.

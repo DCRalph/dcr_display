@@ -78,6 +78,9 @@ public:
   void clearScreen(int32_t color = kThemeColor);
   /** Darkens what is drawn in the rect, behind a sheet or popup; no-op on unbuffered and 1-bit panels. */
   bool dimRect(int32_t x, int32_t y, int32_t w, int32_t h);
+  /** Drawing outside the rect is dropped until clearClip(), where the driver can clip. */
+  void setClip(int32_t x, int32_t y, int32_t w, int32_t h);
+  void clearClip();
   void fillScreen(int32_t color = kThemeColor);
   void push();
 

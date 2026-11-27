@@ -465,6 +465,7 @@ private:
   std::vector<uint16_t> visibleScratch;
 
   // Only the row being edited grows: its slot and how many px it has grown by.
+  int rowHeight() const; // the size's line height, stretched to fill the viewport
   int growSlot() const;
   int16_t growPx() const;
   int32_t slotTop(int slot) const;
